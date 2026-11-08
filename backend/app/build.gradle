@@ -16,8 +16,13 @@ repositories {
 }
 
 dependencies {
-    // Use JUnit test framework.
-    testImplementation libs.junit
+    // Junit 5
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Mockito pentru Junit5
+    testImplementation 'org.mockito:mockito-core:5.20.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.20.0'
 
     // This dependency is used by the application.
     implementation libs.guava
@@ -33,4 +38,7 @@ java {
 application {
     // Define the main class for the application.
     mainClass = 'org.example.App'
+}
+tasks.named('test'){
+    useJUnitPlatform()
 }
