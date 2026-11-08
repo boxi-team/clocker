@@ -3,12 +3,26 @@
  */
 package org.example;
 
-import org.junit.Test;
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 public class AppTest {
-    @Test public void appHasAGreeting() {
-        App classUnderTest = new App();
-        assertNotNull("app should have a greeting", classUnderTest.getGreeting());
+
+    @Mock
+    private App mockedApp;
+
+    @Test
+    void mockitoWorksCorrectly() {
+        when(mockedApp.getGreeting()).thenReturn("Mockito is working");
+        String  result = mockedApp.getGreeting();
+        assertEquals("Mockito is working", result);
+        verify(mockedApp).getGreeting();
     }
 }
