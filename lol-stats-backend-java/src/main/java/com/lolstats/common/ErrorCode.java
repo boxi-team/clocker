@@ -1,0 +1,17 @@
+package com.lolstats.common;
+
+public enum ErrorCode {
+    INVALID_PARAMETER,
+    UNAUTHORIZED,
+    CHAMPION_NOT_FOUND,
+    PLAYER_NOT_FOUND,
+    MATCH_NOT_FOUND,
+    JOB_NOT_FOUND,
+    NOT_FOUND,
+    UNSUPPORTED_MATCH,
+    RATE_LIMITED,
+    REFRESH_COOLDOWN,
+    DATA_NOT_READY,
+    UPSTREAM_ERROR,
+    INTERNAL
+}

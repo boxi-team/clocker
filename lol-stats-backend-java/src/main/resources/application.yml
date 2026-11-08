@@ -1,0 +1,42 @@
+server:
+  port: ${PORT:3000}
+
+spring:
+  application:
+    name: lol-stats-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/lolstats}
+    username: ${DB_USER:lol}
+    password: ${DB_PASSWORD:lol}
+  flyway:
+    # Existing databases created by the old Node migrate script are adopted as-is (all DDL is IF NOT EXISTS).
+    baseline-on-migrate: true
+  jackson:
+    default-property-inclusion: always
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+lol:
+  # Protects POST /v1/admin/* (send it as the x-admin-token header)
+  admin-token: ${ADMIN_TOKEN:}
+  # From https://developer.riotgames.com (a dev key expires every 24 hours). Never expose it to the browser.
+  riot-api-key: ${RIOT_API_KEY:}
+  # Test hook: when set, requests go to {riot-base-url}/{host}{path}
+  riot-base-url: ${RIOT_BASE_URL:}
+  # Riot app limits per host as max:windowMs pairs. Defaults are the dev-key limits.
+  riot-rate-limits: ${RIOT_RATE_LIMITS:20:1000,100:120000}
+  locale: ${DDRAGON_LOCALE:en_US}
+  ddragon-base: ${DDRAGON_BASE:https://ddragon.leagueoflegends.com}
+  # Check Data Dragon on boot and hourly, and run the background job worker
+  enable-cron: ${ENABLE_CRON:true}
+  enable-worker: ${ENABLE_WORKER:true}
+  worker-concurrency: ${WORKER_CONCURRENCY:2}
+  # Share of matches for which the extra timeline call is made (skill order, starting items). 0 to 1.
+  timeline-sample-rate: ${TIMELINE_SAMPLE_RATE:0.25}
+  first-import-count: ${FIRST_IMPORT_COUNT:20}
+  refresh-cooldown-seconds: ${REFRESH_COOLDOWN_SECONDS:120}
+  low-sample-games: ${LOW_SAMPLE_GAMES:100}
+  inbound-rate-limit: ${INBOUND_RATE_LIMIT:120}
