@@ -1,0 +1,1201 @@
+openapi: 3.1.0
+info:
+  title: LoL Stats API
+  version: 1.0.0
+  description: |
+    REST API for an op.gg-style League of Legends stats site.
+
+    **Data layers**
+    1. Static game data (champions, items, runes, summoner spells) from Riot Data Dragon, synced per patch.
+    2. Raw ranked matches (Solo/Duo and Flex only) from the Riot API (account-v1, summoner-v4, league-v4, match-v5).
+    3. Everything else (champion win/pick/ban rates, builds, matchups, tier list, player stats) is computed by this API from layer 2.
+
+    **Conventions**
+    - Every success response is `{ "data": ..., "meta": {...} }`. Every error is `{ "error": { "code", "message", "details?" } }`.
+    - Rates (`winRate`, `pickRate`, `banRate`, `roleRate`) are fractions between 0 and 1.
+    - `patch` is `major.minor` (e.g. `15.21`) or `latest`.
+    - `region` is the Riot platform code (e.g. `euw1`). Riot regional routing is handled internally.
+    - Riot ID is split in two path segments, URL-encoded: `/players/euw1/Faker/KR1`.
+servers:
+  - url: http://localhost:3000/v1
+tags:
+  - name: Meta
+  - name: Static
+  - name: Champions
+  - name: Players
+  - name: Matches
+  - name: Jobs
+  - name: Admin
+
+paths:
+  /health:
+    get:
+      tags: [Meta]
+      summary: Liveness and database check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [ok]
+                    properties:
+                      ok: { type: boolean }
+
+  /patches:
+    get:
+      tags: [Meta]
+      summary: Synced game patches, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Patch' }
+
+  /patches/latest:
+    get:
+      tags: [Meta]
+      summary: Latest synced patch
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Patch' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /items:
+    get:
+      tags: [Static]
+      summary: Item definitions (Data Dragon item.json) for a patch
+      parameters:
+        - $ref: '#/components/parameters/StaticPatch'
+      responses:
+        '200': { $ref: '#/components/responses/StaticAsset' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /runes:
+    get:
+      tags: [Static]
+      summary: Rune trees (Data Dragon runesReforged.json) for a patch
+      parameters:
+        - $ref: '#/components/parameters/StaticPatch'
+      responses:
+        '200': { $ref: '#/components/responses/StaticAsset' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /summoner-spells:
+    get:
+      tags: [Static]
+      summary: Summoner spells (Data Dragon summoner.json) for a patch
+      parameters:
+        - $ref: '#/components/parameters/StaticPatch'
+      responses:
+        '200': { $ref: '#/components/responses/StaticAsset' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /champions:
+    get:
+      tags: [Champions]
+      summary: List champions
+      parameters:
+        - $ref: '#/components/parameters/StaticPatch'
+        - name: tag
+          in: query
+          schema: { type: string, enum: [Assassin, Fighter, Mage, Marksman, Support, Tank] }
+        - name: search
+          in: query
+          description: Case-insensitive substring of the champion name.
+          schema: { type: string, maxLength: 32 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChampionSummary' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /champions/{idOrKey}:
+    get:
+      tags: [Champions]
+      summary: Champion detail (lore, stats, spells, passive, skins)
+      parameters:
+        - $ref: '#/components/parameters/IdOrKey'
+        - $ref: '#/components/parameters/StaticPatch'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/ChampionDetail' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /champions/{idOrKey}/stats:
+    get:
+      tags: [Champions]
+      summary: Win, pick and ban rate for a champion, overall and per role
+      parameters:
+        - $ref: '#/components/parameters/IdOrKey'
+        - $ref: '#/components/parameters/Patch'
+        - $ref: '#/components/parameters/Tier'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/RegionFilter'
+        - $ref: '#/components/parameters/RoleFilter'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/ChampionStats' }
+                  meta: { $ref: '#/components/schemas/AnalyticsMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /champions/{idOrKey}/builds:
+    get:
+      tags: [Champions]
+      summary: Most common runes, summoner spells, boots, items, core item sets, skill order and starting items
+      description: |
+        `role` defaults to the champion's most played role in the selected filter.
+        `skillOrder` and `startingItems` come from match timelines, which are only fetched for a sample
+        of matches (`TIMELINE_SAMPLE_RATE`). They are `null` when no timeline data exists and always
+        report their own `sampleSize`.
+
+        Optional `vs` (champion id or key) limits the build to games where the lane opponent
+        (same role, other team) played that champion. Few games are likely, so check `games`.
+      parameters:
+        - $ref: '#/components/parameters/IdOrKey'
+        - $ref: '#/components/parameters/Patch'
+        - $ref: '#/components/parameters/Tier'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/RegionFilter'
+        - $ref: '#/components/parameters/RoleFilter'
+        - name: vs
+          in: query
+          required: false
+          description: Lane opponent champion (id like `Zed` or key like `238`). Unknown champion returns 404.
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/ChampionBuilds' }
+                  meta: { $ref: '#/components/schemas/AnalyticsMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /champions/{idOrKey}/matchups:
+    get:
+      tags: [Champions]
+      summary: Win rate against each lane opponent in the same role
+      parameters:
+        - $ref: '#/components/parameters/IdOrKey'
+        - $ref: '#/components/parameters/Patch'
+        - $ref: '#/components/parameters/Tier'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/RegionFilter'
+        - $ref: '#/components/parameters/RoleFilter'
+        - $ref: '#/components/parameters/MinGames'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/Matchups' }
+                  meta: { $ref: '#/components/schemas/AnalyticsMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /tier-list:
+    get:
+      tags: [Champions]
+      summary: Champions ranked by performance
+      description: |
+        `score` is the lower bound of the 95% Wilson confidence interval of the win rate (0-100), so
+        champions with few games are not ranked above champions with many.
+      parameters:
+        - $ref: '#/components/parameters/Patch'
+        - $ref: '#/components/parameters/Tier'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/RegionFilter'
+        - $ref: '#/components/parameters/RoleFilter'
+        - $ref: '#/components/parameters/MinGames'
+        - name: sort
+          in: query
+          schema: { type: string, enum: [score, winRate, pickRate, banRate, games], default: score }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TierListEntry' }
+                  meta: { $ref: '#/components/schemas/AnalyticsMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/DataNotReady' }
+
+  /players/{region}/{gameName}/{tagLine}:
+    get:
+      tags: [Players]
+      summary: Player profile and current ranks
+      description: |
+        Unknown players are fetched from Riot synchronously (profile and ranks only), stored, and a
+        background job imports their recent ranked matches. `matchesStatus` tells the client whether to poll.
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/PlayerProfile' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+
+  /players/{region}/{gameName}/{tagLine}/refresh:
+    post:
+      tags: [Players]
+      summary: Re-fetch profile, ranks and new matches ("Update" button)
+      description: |
+        Returns immediately with a job. One refresh per player per `REFRESH_COOLDOWN_SECONDS` (default 120).
+        If a refresh job is already queued or running, its id is returned with 202.
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /players/{region}/{gameName}/{tagLine}/matches:
+    get:
+      tags: [Players]
+      summary: Stored ranked matches of a player, newest first
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/PlayerChampionFilter'
+        - $ref: '#/components/parameters/RoleFilter'
+        - $ref: '#/components/parameters/Start'
+        - $ref: '#/components/parameters/Count'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlayerMatch' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /players/{region}/{gameName}/{tagLine}/stats:
+    get:
+      tags: [Players]
+      summary: Aggregate stats of a player over stored matches
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/PlayerPatch'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/PlayerStats' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /players/{region}/{gameName}/{tagLine}/champions:
+    get:
+      tags: [Players]
+      summary: Player stats grouped by champion
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/PlayerPatch'
+        - $ref: '#/components/parameters/RoleFilter'
+        - name: sort
+          in: query
+          schema: { type: string, enum: [games, winRate, kda], default: games }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlayerChampionLine' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /players/{region}/{gameName}/{tagLine}/champions/{idOrKey}:
+    get:
+      tags: [Players]
+      summary: Player stats on one champion, with their most used runes and items
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - $ref: '#/components/parameters/GameName'
+        - $ref: '#/components/parameters/TagLine'
+        - $ref: '#/components/parameters/IdOrKey'
+        - $ref: '#/components/parameters/Queue'
+        - $ref: '#/components/parameters/PlayerPatch'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/PlayerChampionDetail' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /matches/{region}/{matchId}:
+    get:
+      tags: [Matches]
+      summary: Full match with both teams
+      description: Served from the database; fetched from Riot and stored on first request. Only ranked Solo/Duo and Flex matches are supported.
+      parameters:
+        - $ref: '#/components/parameters/Region'
+        - name: matchId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[A-Z0-9]+_[0-9]+$', examples: [EUW1_7123456789] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/MatchDetail' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: Not a ranked Solo/Duo or Flex match, or a remake
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+
+  /jobs/{jobId}:
+    get:
+      tags: [Jobs]
+      summary: Status of a background job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/sync:
+    post:
+      tags: [Admin]
+      summary: Sync static data from Data Dragon
+      security: [{ AdminToken: [] }]
+      parameters:
+        - name: force
+          in: query
+          description: Re-download even if the latest patch is already stored.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [patch, synced, champions]
+                    properties:
+                      patch: { type: string, examples: ['15.21.1'] }
+                      synced: { type: boolean }
+                      champions: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/crawl:
+    post:
+      tags: [Admin]
+      summary: Seed match data by crawling a ranked ladder
+      description: |
+        Pages through league-v4 entries for a tier, then imports `matchesPerPlayer` recent ranked matches
+        for each player. Matches are stored with the crawled tier as their `tierBucket`.
+        `division` is required for iron through diamond and ignored for master, grandmaster and challenger.
+      security: [{ AdminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region, tier]
+              properties:
+                region: { $ref: '#/components/schemas/Region' }
+                queue: { $ref: '#/components/schemas/Queue' }
+                tier: { $ref: '#/components/schemas/TierBucket' }
+                division: { type: string, enum: [I, II, III, IV] }
+                pages: { type: integer, minimum: 1, maximum: 20, default: 1 }
+                matchesPerPlayer: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Job' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    AdminToken:
+      type: apiKey
+      in: header
+      name: x-admin-token
+
+  parameters:
+    Region:
+      name: region
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Region' }
+    GameName:
+      name: gameName
+      in: path
+      required: true
+      description: Riot ID name part, URL-encoded (1-16 characters).
+      schema: { type: string, minLength: 1, maxLength: 16 }
+    TagLine:
+      name: tagLine
+      in: path
+      required: true
+      description: Riot ID tag part, without the `#` (1-5 characters).
+      schema: { type: string, minLength: 1, maxLength: 5 }
+    IdOrKey:
+      name: idOrKey
+      in: path
+      required: true
+      description: Data Dragon id (`Ahri`, case-insensitive) or numeric champion key (`103`).
+      schema: { type: string, examples: [Ahri, '103'] }
+    StaticPatch:
+      name: patch
+      in: query
+      description: Full Data Dragon version (`15.21.1`) or `latest`.
+      schema: { type: string, default: latest }
+    Patch:
+      name: patch
+      in: query
+      description: '`major.minor` (e.g. `15.21`) or `latest`.'
+      schema: { type: string, default: latest }
+    PlayerPatch:
+      name: patch
+      in: query
+      description: '`major.minor`. Omit for all stored matches.'
+      schema: { type: string, pattern: '^[0-9]+\.[0-9]+$' }
+    Tier:
+      name: tier
+      in: query
+      description: Rank bucket of the match. `*_plus` aliases include higher tiers.
+      schema:
+        type: string
+        enum: [all, iron, bronze, silver, gold, platinum, emerald, diamond, master, grandmaster, challenger, emerald_plus, diamond_plus, master_plus]
+        default: emerald_plus
+    Queue:
+      name: queue
+      in: query
+      schema: { $ref: '#/components/schemas/Queue' }
+    RegionFilter:
+      name: region
+      in: query
+      description: Restrict to one platform region, or `all`.
+      schema:
+        oneOf:
+          - { $ref: '#/components/schemas/Region' }
+          - { type: string, const: all }
+        default: all
+    RoleFilter:
+      name: role
+      in: query
+      schema: { $ref: '#/components/schemas/Role' }
+    MinGames:
+      name: minGames
+      in: query
+      description: Hide rows with fewer games than this.
+      schema: { type: integer, minimum: 1, default: 100 }
+    PlayerChampionFilter:
+      name: championId
+      in: query
+      description: Champion key (`103`) or id (`Ahri`).
+      schema: { type: string }
+    Start:
+      name: start
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Count:
+      name: count
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: A parameter is missing or invalid (`INVALID_PARAMETER`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or wrong admin token (`UNAUTHORIZED`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found (`CHAMPION_NOT_FOUND`, `PLAYER_NOT_FOUND`, `MATCH_NOT_FOUND`, `JOB_NOT_FOUND`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: |
+        Too many requests (`RATE_LIMITED`) or refresh cooldown active (`REFRESH_COOLDOWN`).
+        Includes a `Retry-After` header in seconds.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UpstreamError:
+      description: Riot API failed or the Riot key is invalid/expired (`UPSTREAM_ERROR`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    DataNotReady:
+      description: No data synced yet (`DATA_NOT_READY`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    StaticAsset:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                description: Raw Data Dragon payload.
+              meta: { $ref: '#/components/schemas/Meta' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_PARAMETER
+                - UNAUTHORIZED
+                - CHAMPION_NOT_FOUND
+                - PLAYER_NOT_FOUND
+                - MATCH_NOT_FOUND
+                - JOB_NOT_FOUND
+                - NOT_FOUND
+                - UNSUPPORTED_MATCH
+                - RATE_LIMITED
+                - REFRESH_COOLDOWN
+                - DATA_NOT_READY
+                - UPSTREAM_ERROR
+                - INTERNAL
+            message: { type: string }
+            details: {}
+
+    Region:
+      type: string
+      enum: [br1, eun1, euw1, jp1, kr, la1, la2, me1, na1, oc1, ph2, ru, sg2, th2, tr1, tw2, vn2]
+    Role:
+      type: string
+      enum: [top, jungle, mid, adc, support]
+    Queue:
+      type: string
+      description: ranked_solo = queue 420, ranked_flex = queue 440.
+      enum: [ranked_solo, ranked_flex]
+      default: ranked_solo
+    TierBucket:
+      type: string
+      enum: [iron, bronze, silver, gold, platinum, emerald, diamond, master, grandmaster, challenger]
+
+    Meta:
+      type: object
+      required: [generatedAt]
+      properties:
+        patch: { type: string }
+        generatedAt: { type: string, format: date-time }
+    AnalyticsMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          required: [patch, tier, queue, region, totalMatches]
+          properties:
+            tier: { type: string }
+            queue: { $ref: '#/components/schemas/Queue' }
+            region: { type: string }
+            totalMatches:
+              type: integer
+              description: Matches in the selected filter. Denominator of pick and ban rate.
+    PageMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          required: [start, count, total]
+          properties:
+            start: { type: integer }
+            count: { type: integer }
+            total: { type: integer }
+
+    Patch:
+      type: object
+      required: [version, locale, syncedAt]
+      properties:
+        version: { type: string, examples: ['15.21.1'] }
+        locale: { type: string }
+        syncedAt: { type: string, format: date-time }
+
+    ChampionSummary:
+      type: object
+      required: [key, id, name, title, tags, iconUrl, splashUrl]
+      properties:
+        key: { type: integer, examples: [103] }
+        id: { type: string, examples: [Ahri] }
+        name: { type: string }
+        title: { type: string }
+        blurb: { type: string }
+        tags: { type: array, items: { type: string } }
+        partype: { type: string }
+        info:
+          type: object
+          properties:
+            attack: { type: integer }
+            defense: { type: integer }
+            magic: { type: integer }
+            difficulty: { type: integer }
+        stats: { type: object, additionalProperties: { type: number } }
+        iconUrl: { type: string, format: uri }
+        splashUrl: { type: string, format: uri }
+    ChampionDetail:
+      allOf:
+        - $ref: '#/components/schemas/ChampionSummary'
+        - type: object
+          properties:
+            lore: { type: string }
+            passive: { type: object }
+            spells: { type: array, items: { type: object } }
+            skins: { type: array, items: { type: object } }
+
+    StatLine:
+      type: object
+      required: [games, wins, winRate, kda, avgKills, avgDeaths, avgAssists, csPerMin, avgGold, avgDamageToChampions, avgVisionScore]
+      properties:
+        games: { type: integer }
+        wins: { type: integer }
+        winRate: { type: number, minimum: 0, maximum: 1 }
+        kda: { type: number, description: '(total kills + total assists) / max(1, total deaths)' }
+        avgKills: { type: number }
+        avgDeaths: { type: number }
+        avgAssists: { type: number }
+        csPerMin: { type: number, description: 'total cs / total minutes played' }
+        avgGold: { type: number }
+        avgDamageToChampions: { type: number }
+        avgVisionScore: { type: number }
+
+    ChampionStats:
+      type: object
+      required: [championKey, championId, overall, byRole]
+      properties:
+        championKey: { type: integer }
+        championId: { type: string }
+        overall:
+          allOf:
+            - $ref: '#/components/schemas/StatLine'
+            - type: object
+              required: [pickRate, banRate, lowSample]
+              properties:
+                pickRate: { type: number, description: games / totalMatches }
+                banRate: { type: number, description: matches where banned / totalMatches }
+                lowSample: { type: boolean, description: true when games < 100 }
+        byRole:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/StatLine'
+              - type: object
+                required: [role, pickRate, roleRate, lowSample]
+                properties:
+                  role: { $ref: '#/components/schemas/Role' }
+                  pickRate: { type: number, description: games in role / all games in that role }
+                  roleRate: { type: number, description: games in role / all games of this champion }
+                  lowSample: { type: boolean }
+
+    Rate:
+      type: object
+      required: [games, winRate, pickRate]
+      properties:
+        games: { type: integer }
+        winRate: { type: number }
+        pickRate: { type: number, description: games / games of the champion in the selected role }
+    ChampionBuilds:
+      type: object
+      required: [championKey, championId, role, games, winRate, runes, summonerSpells, boots, items, coreSets, skillOrder, startingItems]
+      properties:
+        championKey: { type: integer }
+        championId: { type: string }
+        vsChampionKey: { type: [integer, 'null'], description: Opponent key when `vs` was given, else null. }
+        vsChampionId: { type: [string, 'null'], description: Opponent id when `vs` was given, else null. }
+        role:
+          oneOf: [{ $ref: '#/components/schemas/Role' }, { type: 'null' }]
+          description: Resolved role. null when there is no data.
+        games: { type: integer }
+        winRate: { type: number }
+        runes:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Rate'
+              - type: object
+                required: [primaryStyle, subStyle, keystone, primaryPerks, secondaryPerks, statShards]
+                properties:
+                  primaryStyle: { type: integer }
+                  subStyle: { type: integer }
+                  keystone: { type: integer }
+                  primaryPerks: { type: array, items: { type: integer } }
+                  secondaryPerks: { type: array, items: { type: integer } }
+                  statShards: { type: array, items: { type: integer }, description: '[offense, flex, defense]' }
+        summonerSpells:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Rate'
+              - type: object
+                required: [spellIds]
+                properties:
+                  spellIds: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+        boots:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Rate'
+              - type: object
+                required: [itemId]
+                properties:
+                  itemId: { type: integer }
+        items:
+          type: array
+          description: Completed non-boots items in the final inventory, per item.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Rate'
+              - type: object
+                required: [itemId]
+                properties:
+                  itemId: { type: integer }
+        coreSets:
+          type: array
+          description: The three most expensive completed items of the final inventory, as a set.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Rate'
+              - type: object
+                required: [itemIds]
+                properties:
+                  itemIds: { type: array, items: { type: integer }, minItems: 3, maxItems: 3 }
+        skillOrder:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [sampleSize, orders]
+              properties:
+                sampleSize: { type: integer }
+                orders:
+                  type: array
+                  items:
+                    type: object
+                    required: [maxOrder, sequence, games, winRate]
+                    properties:
+                      maxOrder: { type: string, examples: ['Q>E>W'], description: Order in which Q, W, E reach level 5. }
+                      sequence: { type: string, examples: ['QWEQQRQEQEREEWWR'], description: Most common first 15 skill-ups for that max order. }
+                      games: { type: integer }
+                      winRate: { type: number }
+        startingItems:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [sampleSize, sets]
+              properties:
+                sampleSize: { type: integer }
+                sets:
+                  type: array
+                  items:
+                    type: object
+                    required: [itemIds, games, winRate]
+                    properties:
+                      itemIds: { type: array, items: { type: integer } }
+                      games: { type: integer }
+                      winRate: { type: number }
+
+    Matchups:
+      type: object
+      required: [championKey, championId, role, matchups]
+      properties:
+        championKey: { type: integer }
+        championId: { type: string }
+        role:
+          oneOf: [{ $ref: '#/components/schemas/Role' }, { type: 'null' }]
+        matchups:
+          type: array
+          items:
+            type: object
+            required: [opponentKey, opponentId, games, wins, winRate]
+            properties:
+              opponentKey: { type: integer }
+              opponentId: { type: string }
+              games: { type: integer }
+              wins: { type: integer }
+              winRate: { type: number, description: Win rate of the requested champion against this opponent. }
+
+    TierListEntry:
+      type: object
+      required: [rank, championKey, championId, name, role, games, winRate, pickRate, banRate, score, iconUrl]
+      properties:
+        rank: { type: integer }
+        championKey: { type: integer }
+        championId: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        games: { type: integer }
+        winRate: { type: number }
+        pickRate: { type: number, description: games in role / all games in that role }
+        banRate: { type: number }
+        score: { type: number, description: Wilson lower bound of win rate, 0-100. }
+        iconUrl: { type: string, format: uri }
+
+    RankEntry:
+      type: object
+      required: [queue, tier, division, leaguePoints, wins, losses, winRate]
+      properties:
+        queue: { $ref: '#/components/schemas/Queue' }
+        tier: { type: string, examples: [EMERALD] }
+        division: { type: string, examples: [II], description: Empty-ish for master+. }
+        leaguePoints: { type: integer }
+        wins: { type: integer }
+        losses: { type: integer }
+        winRate: { type: number }
+    PlayerProfile:
+      type: object
+      required: [puuid, region, gameName, tagLine, summonerLevel, profileIconId, profileIconUrl, ranked, matchesStatus, matchesIndexed]
+      properties:
+        puuid: { type: string }
+        region: { $ref: '#/components/schemas/Region' }
+        gameName: { type: string }
+        tagLine: { type: string }
+        summonerLevel: { type: integer }
+        profileIconId: { type: integer }
+        profileIconUrl: { type: string, format: uri }
+        ranked:
+          type: array
+          items: { $ref: '#/components/schemas/RankEntry' }
+        matchesStatus:
+          type: string
+          enum: [pending, ready, empty]
+          description: pending = import job queued or running, ready = matches stored, empty = nothing found.
+        matchesIndexed: { type: integer }
+        jobId:
+          type: [string, 'null']
+          format: uuid
+          description: Active import job, if any.
+        lastRefreshedAt: { type: [string, 'null'], format: date-time }
+
+    PlayerMatch:
+      type: object
+      required: [matchId, queue, patch, gameCreation, gameDuration, win, championKey, role, kills, deaths, assists, cs, csPerMin, gold, damageToChampions, visionScore, items, summonerSpells, keystone]
+      properties:
+        matchId: { type: string }
+        queue: { $ref: '#/components/schemas/Queue' }
+        patch: { type: string }
+        gameCreation: { type: integer, description: Unix ms. }
+        gameDuration: { type: integer, description: Seconds. }
+        win: { type: boolean }
+        championKey: { type: integer }
+        championId: { type: [string, 'null'] }
+        role: { oneOf: [{ $ref: '#/components/schemas/Role' }, { type: 'null' }] }
+        kills: { type: integer }
+        deaths: { type: integer }
+        assists: { type: integer }
+        cs: { type: integer }
+        csPerMin: { type: number }
+        gold: { type: integer }
+        damageToChampions: { type: integer }
+        visionScore: { type: integer }
+        champLevel: { type: integer }
+        items: { type: array, items: { type: integer }, minItems: 7, maxItems: 7, description: 'Slots 0-5 plus trinket. 0 = empty.' }
+        summonerSpells: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+        keystone: { type: integer }
+
+    RoleStatLine:
+      allOf:
+        - $ref: '#/components/schemas/StatLine'
+        - type: object
+          required: [role]
+          properties:
+            role: { $ref: '#/components/schemas/Role' }
+    PlayerStats:
+      type: object
+      required: [summary, byRole, last20]
+      properties:
+        summary: { $ref: '#/components/schemas/StatLine' }
+        byRole:
+          type: array
+          items: { $ref: '#/components/schemas/RoleStatLine' }
+        last20:
+          type: object
+          required: [games, wins, winRate]
+          properties:
+            games: { type: integer }
+            wins: { type: integer }
+            winRate: { type: number }
+    PlayerChampionLine:
+      allOf:
+        - $ref: '#/components/schemas/StatLine'
+        - type: object
+          required: [championKey, championId, name, iconUrl]
+          properties:
+            championKey: { type: integer }
+            championId: { type: [string, 'null'] }
+            name: { type: [string, 'null'] }
+            iconUrl: { type: [string, 'null'], format: uri }
+    PlayerChampionDetail:
+      type: object
+      required: [championKey, summary, byRole, topKeystones, topItems]
+      properties:
+        championKey: { type: integer }
+        championId: { type: string }
+        summary: { $ref: '#/components/schemas/StatLine' }
+        byRole:
+          type: array
+          items: { $ref: '#/components/schemas/RoleStatLine' }
+        topKeystones:
+          type: array
+          items:
+            type: object
+            required: [keystone, games, winRate]
+            properties:
+              keystone: { type: integer }
+              games: { type: integer }
+              winRate: { type: number }
+        topItems:
+          type: array
+          items:
+            type: object
+            required: [itemId, games, winRate]
+            properties:
+              itemId: { type: integer }
+              games: { type: integer }
+              winRate: { type: number }
+
+    MatchParticipant:
+      type: object
+      required: [puuid, championKey, role, win, kills, deaths, assists, cs, gold, damageToChampions, visionScore, champLevel, items, summonerSpells, runes]
+      properties:
+        puuid: { type: string }
+        gameName: { type: [string, 'null'] }
+        tagLine: { type: [string, 'null'] }
+        championKey: { type: integer }
+        championId: { type: [string, 'null'] }
+        role: { oneOf: [{ $ref: '#/components/schemas/Role' }, { type: 'null' }] }
+        win: { type: boolean }
+        kills: { type: integer }
+        deaths: { type: integer }
+        assists: { type: integer }
+        cs: { type: integer }
+        gold: { type: integer }
+        damageToChampions: { type: integer }
+        visionScore: { type: integer }
+        champLevel: { type: integer }
+        items: { type: array, items: { type: integer }, minItems: 7, maxItems: 7 }
+        summonerSpells: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+        runes:
+          type: object
+          required: [primaryStyle, subStyle, keystone, primaryPerks, secondaryPerks, statShards]
+          properties:
+            primaryStyle: { type: integer }
+            subStyle: { type: integer }
+            keystone: { type: integer }
+            primaryPerks: { type: array, items: { type: integer } }
+            secondaryPerks: { type: array, items: { type: integer } }
+            statShards: { type: array, items: { type: integer } }
+    MatchDetail:
+      type: object
+      required: [matchId, region, queue, patch, gameCreation, gameDuration, winningTeamId, tierBucket, teams]
+      properties:
+        matchId: { type: string }
+        region: { $ref: '#/components/schemas/Region' }
+        queue: { $ref: '#/components/schemas/Queue' }
+        patch: { type: string }
+        gameCreation: { type: integer }
+        gameDuration: { type: integer }
+        winningTeamId: { type: integer, enum: [100, 200] }
+        tierBucket:
+          type: string
+          description: Rank of the player this match was discovered through, or `unranked`. An approximation of the lobby rank.
+        teams:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: object
+            required: [teamId, win, bans, participants]
+            properties:
+              teamId: { type: integer, enum: [100, 200] }
+              win: { type: boolean }
+              bans: { type: array, items: { type: integer }, description: Banned champion keys in pick-turn order. }
+              participants:
+                type: array
+                items: { $ref: '#/components/schemas/MatchParticipant' }
+
+    Job:
+      type: object
+      required: [id, type, status, progress, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [player_refresh, crawl] }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        progress:
+          type: object
+          required: [done, total]
+          properties:
+            done: { type: integer }
+            total: { type: integer }
+        result: { type: [object, 'null'] }
+        error: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
