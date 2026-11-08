@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pool } from '../db.js';
 import { notFound } from '../errors.js';
 import { ok, resolveStaticPatch } from '../http.js';
+import { patchChanges } from '../patchDiff.js';
 
 const assetQuery = z.object({
   patch: z.string().regex(/^(latest|\d+\.\d+\.\d+)$/).default('latest'),
@@ -16,19 +17,26 @@ export async function metaRoutes(app: FastifyInstance) {
 
   app.get('/patches', async () => {
     const { rows } = await pool.query(
-      `SELECT version, locale, synced_at AS "syncedAt" FROM patches ORDER BY synced_at DESC, version DESC`,
+      `SELECT version, locale, synced_at AS "syncedAt" FROM patches ORDER BY string_to_array(version, '.')::int[] DESC`,
     );
     return { data: rows };
   });
 
-  app.get('/patches/latest', async () => {
-    const v = await resolveStaticPatch('latest');
+  const patchWithChanges = async (version: string) => {
     const { rows } = await pool.query(
       `SELECT version, locale, synced_at AS "syncedAt" FROM patches WHERE version = $1`,
-      [v],
+      [version],
     );
-    return { data: rows[0] };
-  });
+    if (!rows[0]) throw notFound('NOT_FOUND', `Patch ${version} is not synced`);
+    // `changes` is null for the oldest synced patch (nothing to compare with).
+    return { data: { ...rows[0], changes: await patchChanges(version) } };
+  };
+
+  app.get('/patches/latest', async () => patchWithChanges(await resolveStaticPatch('latest')));
+
+  app.get('/patches/:version', async (req) =>
+    patchWithChanges(z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/) }).parse(req.params).version),
+  );
 
   const asset = (path: string, kind: 'items' | 'runes' | 'spells') =>
     app.get(path, async (req, reply) => {

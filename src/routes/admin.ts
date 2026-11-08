@@ -20,8 +20,13 @@ const crawlBody = z.object({
 export async function adminRoutes(app: FastifyInstance) {
   app.post('/admin/sync', async (req) => {
     requireAdmin(req.headers['x-admin-token'], config.adminToken);
-    const { force } = z.object({ force: z.enum(['true', 'false']).default('false') }).parse(req.query);
-    return { data: await syncChampions(force === 'true') };
+    const { force, version } = z
+      .object({
+        force: z.enum(['true', 'false']).default('false'),
+        version: z.string().regex(/^\d+\.\d+\.\d+$/).optional(), // e.g. 16.21.1, to back-fill an older patch
+      })
+      .parse(req.query);
+    return { data: await syncChampions(force === 'true', version) };
   });
 
   app.post('/admin/crawl', async (req, reply) => {

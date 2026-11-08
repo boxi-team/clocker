@@ -75,7 +75,7 @@ export const playerParams = z.object({
 
 export const analyticsQuery = z.object({
   patch: z.string().regex(/^(latest|\d+\.\d+)$/).default('latest'),
-  tier: z.enum(TIER_FILTERS).default('emerald_plus'),
+  tier: z.enum(TIER_FILTERS).default('master_plus'),
   queue: queueSchema.default('ranked_solo'),
   region: z.union([regionSchema, z.literal('all')]).default('all'),
   role: roleSchema.optional(),

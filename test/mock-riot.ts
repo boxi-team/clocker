@@ -133,7 +133,7 @@ export function startMock(port: number): Promise<http.Server> {
     if (rest === '/lol/summoner/v4/summoners/by-puuid/P0') return send(200, { puuid: 'P0', profileIconId: 29, summonerLevel: 321 });
     if (rest === '/lol/league/v4/entries/by-puuid/P0') {
       return send(200, [
-        { queueType: 'RANKED_SOLO_5x5', tier: 'EMERALD', rank: 'II', leaguePoints: 55, wins: 60, losses: 40 },
+        { queueType: 'RANKED_SOLO_5x5', tier: 'MASTER', rank: 'I', leaguePoints: 55, wins: 60, losses: 40 },
         { queueType: 'RANKED_TFT', tier: 'GOLD', rank: 'I', leaguePoints: 10, wins: 1, losses: 1 },
       ]);
     }

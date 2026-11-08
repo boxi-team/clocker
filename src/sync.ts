@@ -37,8 +37,9 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
  * Downloads champion data for the latest patch and upserts it into Postgres.
  * Does nothing if that patch is already stored, unless `force` is true.
  */
-export async function syncChampions(force = false): Promise<SyncResult> {
-  const patch = await fetchLatestVersion();
+export async function syncChampions(force = false, version?: string): Promise<SyncResult> {
+  // `version` lets you back-fill an older Data Dragon patch (needed to diff two patches).
+  const patch = version ?? (await fetchLatestVersion());
 
   if (!force) {
     const { rowCount } = await pool.query('SELECT 1 FROM patches WHERE version = $1', [patch]);

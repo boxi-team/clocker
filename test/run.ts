@@ -133,7 +133,7 @@ try {
   const prof = r.body.data;
   check('profile 200', r.status === 200, r.body);
   check('profile fields', prof.puuid === 'P0' && prof.gameName === 'Tester' && prof.summonerLevel === 321 && prof.profileIconUrl.endsWith('/15.21.1/img/profileicon/29.png'), prof);
-  eq('ranked: solo only (TFT ignored)', prof.ranked, [{ queue: 'ranked_solo', tier: 'EMERALD', division: 'II', leaguePoints: 55, wins: 60, losses: 40, winRate: 0.6 }]);
+  eq('ranked: solo only (TFT ignored)', prof.ranked, [{ queue: 'ranked_solo', tier: 'MASTER', division: 'I', leaguePoints: 55, wins: 60, losses: 40, winRate: 0.6 }]);
   check('new player has a pending import job', prof.matchesStatus === 'pending' && !!prof.jobId, prof);
 
   const job = await waitJob(prof.jobId);
@@ -199,7 +199,7 @@ try {
   console.log('\n# champion analytics');
   r = await get('/v1/champions/Ahri/stats?minGames=1');
   const st = r.body.data;
-  check('Ahri totalMatches = 12 (emerald_plus default)', r.body.meta.totalMatches === 12 && r.body.meta.tier === 'emerald_plus' && r.body.meta.patch === '15.21', r.body.meta);
+  check('Ahri totalMatches = 12 (master_plus default)', r.body.meta.totalMatches === 12 && r.body.meta.tier === 'master_plus' && r.body.meta.patch === '15.21', r.body.meta);
   check('Ahri overall', st.overall.games === 12 && st.overall.pickRate === 1 && st.overall.banRate === 0 && st.overall.winRate === 0.5 && st.overall.lowSample === true, st.overall);
   check('Ahri byRole', st.byRole.length === 1 && st.byRole[0].role === 'mid' && st.byRole[0].roleRate === 1 && st.byRole[0].pickRate === 0.5, st.byRole);
   r = await get('/v1/champions/Zed/stats');
@@ -207,7 +207,7 @@ try {
   r = await get('/v1/champions/Ahri/stats?tier=gold');
   check('no gold matches yet -> zeros', r.body.data.overall.games === 0 && r.body.meta.totalMatches === 0);
   r = await get('/v1/champions/Ahri/stats?queue=ranked_flex');
-  check('flex matches are "unranked" (player has no flex rank), so emerald_plus excludes them', r.body.meta.totalMatches === 0, r.body.meta);
+  check('flex matches are "unranked" (player has no flex rank), so master_plus excludes them', r.body.meta.totalMatches === 0, r.body.meta);
   r = await get('/v1/champions/Ahri/stats?queue=ranked_flex&tier=all');
   check('flex queue filter', r.body.meta.totalMatches === 2 && r.body.data.overall.games === 2, r.body.meta);
   r = await get('/v1/champions/Ahri/stats?role=top');
@@ -271,7 +271,7 @@ try {
   console.log('\n# matches');
   r = await get('/v1/matches/euw1/EUW1_1000');
   const md = r.body.data;
-  check('match detail', r.status === 200 && md.matchId === 'EUW1_1000' && md.queue === 'ranked_solo' && md.patch === '15.21' && md.winningTeamId === 100 && md.tierBucket === 'emerald', md);
+  check('match detail', r.status === 200 && md.matchId === 'EUW1_1000' && md.queue === 'ranked_solo' && md.patch === '15.21' && md.winningTeamId === 100 && md.tierBucket === 'master', md);
   check('two teams x five players, ordered by role', md.teams.length === 2 && md.teams.every((t: any) => t.participants.length === 5) && md.teams[0].participants.map((p: any) => p.role).join() === 'top,jungle,mid,adc,support', md.teams.map((t: any) => t.participants.map((p: any) => p.role)));
   eq('bans exclude "no ban" (-1)', md.teams.map((t: any) => t.bans), [[238], [238, 91]]);
   const tester = md.teams[0].participants[2];
@@ -302,8 +302,8 @@ try {
   check('crawled matches are bucketed by the crawled tier', r.body.meta.totalMatches === 3 && r.body.data.overall.games === 3, r.body.meta);
   r = await get('/v1/champions/Ahri/stats?tier=all');
   check('tier=all sees every bucket', r.body.meta.totalMatches === 15, r.body.meta);
-  r = await get('/v1/champions/Ahri/stats?tier=emerald_plus');
-  check('emerald_plus excludes gold', r.body.meta.totalMatches === 12);
+  r = await get('/v1/champions/Ahri/stats?tier=master_plus');
+  check('master_plus excludes gold', r.body.meta.totalMatches === 12);
   r = await get('/v1/jobs/00000000-0000-4000-8000-000000000000');
   check('unknown job -> 404', r.status === 404 && r.body.error.code === 'JOB_NOT_FOUND');
   r = await get('/v1/jobs/nope');
