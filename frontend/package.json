@@ -1,0 +1,8 @@
+{
+  "name": "boxi-gg",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 0.0.0.0 --port 5173" },
+  "dependencies": { "react": "^19.1.0", "react-dom": "^19.1.0", "lucide-react": "^0.540.0" },
+  "devDependencies": { "vite": "^7.1.0", "@vitejs/plugin-react": "^5.0.0", "tailwindcss": "^4.1.0", "@tailwindcss/vite": "^4.1.0" }
+}
