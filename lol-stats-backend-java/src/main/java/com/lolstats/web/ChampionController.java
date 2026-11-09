@@ -149,6 +149,73 @@ public class ChampionController {
         return Api.cached(TTL, ok(data, meta(fm.meta(), total)));
     }
 
+    @GetMapping("/champions/{idOrKey}/full")
+    public ResponseEntity<Object> full(@PathVariable String idOrKey, @RequestParam Map<String, String> query) {
+        ChampionRef champ = catalog.resolveChampion(idOrKey);
+        String version = catalog.resolveStaticPatch("latest");
+        FilterAndMeta fm = toFilter(query);
+
+        Map<String, Object> row = db.one(
+                "SELECT title, tags, image, spells, passive, skins FROM champions WHERE key = ? AND patch = ?",
+                champ.key(), version);
+        if (row == null) {
+            throw AppException.notFound(ErrorCode.CHAMPION_NOT_FOUND, champ.name() + " does not exist in patch " + version);
+        }
+
+        JsonNode passive = Db.json(row, "passive");
+        Map<String, Object> passiveOut = obj(
+                "name", passive.path("name").asText(),
+                "description", stripTags(passive.path("description").asText()),
+                "iconUrl", dd.passiveIconUrl(version, passive.path("image").path("full").asText()));
+
+        String[] keys = {"Q", "W", "E", "R"};
+        List<Object> spellsOut = new ArrayList<>();
+        int i = 0;
+        for (JsonNode sp : Db.json(row, "spells")) {
+            spellsOut.add(obj(
+                    "key", i < keys.length ? keys[i] : null,
+                    "name", sp.path("name").asText(),
+                    "description", stripTags(sp.path("description").asText()),
+                    "cooldown", sp.path("cooldownBurn").asText(null),
+                    "iconUrl", dd.spellIconUrl(version, sp.path("image").path("full").asText())));
+            i++;
+        }
+
+        List<Object> skinsOut = new ArrayList<>();
+        for (JsonNode sk : Db.json(row, "skins")) {
+            if (sk.has("parentSkin")) continue; // sarim peste chroma-uri (nu au splash art propriu)
+            int num = sk.path("num").asInt();
+            skinsOut.add(obj(
+                    "num", num,
+                    "name", num == 0 ? champ.name() : sk.path("name").asText(),
+                    "splashUrl", dd.skinSplashUrl(champ.id(), num)));
+        }
+
+        Map<String, Object> champStats = stats.championStats(fm.filter(), champ.key());
+        Map<String, Object> build = stats.championBuilds(fm.filter(), champ.key(), null);
+
+        Map<String, Object> data = obj(
+                "key", champ.key(),
+                "id", champ.id(),
+                "name", champ.name(),
+                "title", row.get("title"),
+                "tags", row.get("tags"),
+                "iconUrl", dd.championImageUrl(version, Db.json(row, "image").path("full").asText()),
+                "splashUrl", dd.splashUrl(champ.id()),
+                "skins", skinsOut,
+                "abilities", obj("passive", passiveOut, "spells", spellsOut),
+                "stats", champStats.get("overall"),
+                "build", build);
+
+        Map<String, Object> m = meta(fm.meta(), (Integer) champStats.get("totalMatches"));
+        m.put("version", version);
+        return Api.cached(TTL, ok(data, m));
+    }
+
+    private static String stripTags(String s) {
+        return s == null ? null : s.replaceAll("(?i)<br\\s*/?>", "\n").replaceAll("<[^>]+>", "").trim();
+    }
+
     @GetMapping("/champions/{idOrKey}/matchups")
     @SuppressWarnings("unchecked")
     public ResponseEntity<Object> matchups(@PathVariable String idOrKey, @RequestParam Map<String, String> query) {

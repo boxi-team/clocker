@@ -90,4 +90,16 @@ public class DDragonClient {
     public String splashUrl(String id) {
         return props.ddragonBase() + "/cdn/img/champion/splash/" + id + "_0.jpg";
     }
+
+    public String skinSplashUrl(String id, int num) {
+        return props.ddragonBase() + "/cdn/img/champion/splash/" + id + "_" + num + ".jpg";
+    }
+
+    public String spellIconUrl(String version, String imageFile) {
+        return props.ddragonBase() + "/cdn/" + version + "/img/spell/" + imageFile;
+    }
+
+    public String passiveIconUrl(String version, String imageFile) {
+        return props.ddragonBase() + "/cdn/" + version + "/img/passive/" + imageFile;
+    }
 }
