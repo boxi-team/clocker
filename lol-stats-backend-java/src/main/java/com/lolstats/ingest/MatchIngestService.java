@@ -23,7 +23,7 @@ public class MatchIngestService {
     private static final Map<Integer, String> SKILL_LETTER = Map.of(1, "Q", 2, "W", 3, "E", 4, "R");
 
     /** Skill data for one participant from a match timeline. */
-    public record TimelineInfo(String skillOrder, String skillMaxOrder, List<Integer> startingItems) {}
+    public record TimelineInfo(String skillOrder, String skillMaxOrder, List<Integer> startingItems, List<Integer> purchases) {}
 
     private final Db db;
     private final RiotClient riot;
@@ -53,6 +53,7 @@ public class MatchIngestService {
 
         List<Integer> skills = new ArrayList<>();
         List<Integer> starting = new ArrayList<>();
+        List<Integer> purchases = new ArrayList<>();
         for (JsonNode frame : tl.path("info").path("frames")) {
             for (JsonNode e : frame.path("events")) {
                 if (e.path("participantId").asInt(-1) != participantId) continue;
@@ -60,12 +61,16 @@ public class MatchIngestService {
                 if (type.equals("SKILL_LEVEL_UP") && e.path("levelUpType").asText().equals("NORMAL")
                         && e.path("skillSlot").asInt(0) > 0) {
                     skills.add(e.path("skillSlot").asInt());
-                } else if (type.equals("ITEM_PURCHASED") && e.path("itemId").asInt(0) > 0
-                        && e.path("timestamp").asLong() <= 90_000) {
-                    starting.add(e.path("itemId").asInt());
+                } else if (type.equals("ITEM_PURCHASED") && e.path("itemId").asInt(0) > 0) {
+                    int itemId = e.path("itemId").asInt();
+                    purchases.add(itemId);
+                    if (e.path("timestamp").asLong() <= 90_000) starting.add(itemId);
                 } else if (type.equals("ITEM_UNDO") && e.path("beforeId").asInt(0) > 0) {
-                    int i = starting.lastIndexOf(e.path("beforeId").asInt());
+                    Integer undone = e.path("beforeId").asInt();
+                    int i = starting.lastIndexOf(undone);
                     if (i >= 0) starting.remove(i);
+                    int j = purchases.lastIndexOf(undone);
+                    if (j >= 0) purchases.remove(j);
                 }
             }
         }
@@ -83,7 +88,7 @@ public class MatchIngestService {
         for (int s : new int[]{1, 2, 3}) maxed.add(SKILL_LETTER.get(s)); // incomplete: append by slot
         StringBuilder order = new StringBuilder();
         for (int i = 0; i < Math.min(15, skills.size()); i++) order.append(SKILL_LETTER.get(skills.get(i)));
-        return new TimelineInfo(order.toString(), String.join(">", maxed), starting.stream().sorted().toList());
+        return new TimelineInfo(order.toString(), String.join(">", maxed), starting.stream().sorted().toList(), purchases);
     }
 
     private record Runes(Integer primaryStyle, Integer subStyle, Integer keystone, List<Integer> primaryPerks,
@@ -171,16 +176,17 @@ public class MatchIngestService {
                 Runes runes = runesOf(p);
                 String puuid = p.path("puuid").asText();
                 TimelineInfo ti = tl == null ? null : parseTimeline(tl, puuid);
+                List<Integer> itemOrder = ti == null ? null : ItemService.completedInOrder(ti.purchases(), itemMap);
 
                 db.update("INSERT INTO match_participants ("
                                 + "match_id, puuid, game_name, tag_line, team_id, champion_id, role, win, "
                                 + "kills, deaths, assists, cs, gold, damage, vision_score, champ_level, "
                                 + "items, boots, completed_items, core_items, spell1, spell2, "
                                 + "primary_style, sub_style, keystone, primary_perks, secondary_perks, stat_shards, "
-                                + "skill_order, skill_max_order, starting_items, "
+                                + "skill_order, skill_max_order, starting_items, item_order, "
                                 + "patch, queue_id, region, tier_bucket, game_creation, game_duration) VALUES ("
                                 + "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::int[],?,?::int[],?::int[],?,?,"
-                                + "?,?,?,?::int[],?::int[],?::int[],?,?,?::int[],?,?,?,?,?,?)",
+                                + "?,?,?,?::int[],?::int[],?::int[],?,?,?::int[],?::int[],?,?,?,?,?,?)",
                         matchId, puuid, textOrNull(p, "riotIdGameName"), textOrNull(p, "riotIdTagline"),
                         p.path("teamId").asInt(), p.path("championId").asInt(),
                         Domain.ROLE_FROM_RIOT.get(p.path("teamPosition").asText()), p.path("win").asBoolean(),
@@ -194,6 +200,7 @@ public class MatchIngestService {
                         Db.intArray(runes.primaryPerks()), Db.intArray(runes.secondaryPerks()), Db.intArray(runes.statShards()),
                         ti == null ? null : ti.skillOrder(), ti == null ? null : ti.skillMaxOrder(),
                         ti == null ? null : Db.intArray(ti.startingItems()),
+                        Db.intArray(itemOrder),
                         patch, queueId, region, tierBucket, gameCreation, gameDuration);
             }
 

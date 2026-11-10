@@ -96,4 +96,20 @@ public class ItemService {
         if (completedByCost.size() < 3) return null;
         return completedByCost.subList(0, 3).stream().sorted().toList();
     }
+
+    /**
+     * From all purchases (in order), keeps only completed non-boots items, each one once,
+     * in the order they were first bought. null when there is no purchase or item data.
+     */
+    public static List<Integer> completedInOrder(List<Integer> purchases, Map<Integer, ItemInfo> map) {
+        if (purchases == null || map == null) return null;
+        List<Integer> out = new ArrayList<>();
+        for (int id : purchases) {
+            ItemInfo info = map.get(id);
+            if (info != null && info.completed() && !info.boots() && !out.contains(id)) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
 }
