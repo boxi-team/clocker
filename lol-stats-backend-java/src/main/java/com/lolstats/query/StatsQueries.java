@@ -23,6 +23,10 @@ public class StatsQueries {
     private final Db db;
     private final AppProps props;
 
+    private static final int MIN_OPTION_GAMES = 50;
+    private static final double MIN_OPTION_SHARE = 0.05;
+    private static final int MAX_ALTERNATIVES = 2;
+
     public StatsQueries(Db db, AppProps props) {
         this.db = db;
         this.props = props;
@@ -58,8 +62,8 @@ public class StatsQueries {
 
         P pb = new P();
         int bans = Db.i(db.one("SELECT count(DISTINCT b.match_id)::int AS n FROM match_bans b "
-                        + "JOIN matches m ON m.match_id = b.match_id WHERE b.champion_id = " + pb.add(championKey)
-                        + " AND " + String.join(" AND ", f.conditions(pb, "m")), pb.args()), "n");
+                + "JOIN matches m ON m.match_id = b.match_id WHERE b.champion_id = " + pb.add(championKey)
+                + " AND " + String.join(" AND ", f.conditions(pb, "m")), pb.args()), "n");
 
         P pr = new P();
         List<String> byRoleWhere = f.conditions(pr, "p");
@@ -127,11 +131,51 @@ public class StatsQueries {
                 "pickRate", ratio(Db.i(r, "games"), games));
     }
 
+    private static Map<String, Object> pick(List<Map<String, Object>> options, int minGames) {
+        if (options.isEmpty()) {
+            return obj("recommended", null, "alternatives", List.of());
+        }
+        List<Map<String, Object>> alternatives = new ArrayList<>();
+        for (int i = 1; i < options.size() && alternatives.size() < MAX_ALTERNATIVES; i++) {
+            Map<String, Object> option = options.get(i);
+            if (Db.i(option, "games") >= minGames) {
+                alternatives.add(option);
+            }
+        }
+        return obj("recommended", options.get(0), "alternatives", alternatives);
+    }
+
+    /** One item column (starting / core / fourth...): sample size plus recommended and alternatives. */
+    private static Map<String, Object> slotOut(String slot, int sample, List<Map<String, Object>> options) {
+        Map<String, Object> out = obj("slot", slot, "sampleSize", sample);
+        out.putAll(pick(options, (int) Math.ceil(sample * MIN_OPTION_SHARE)));
+        return out;
+    }
+
+    /** Options for completed items number from..to in purchase order (core = 1..3, fourth = 4..4...). */
+    private Map<String, Object> itemSlot(Filter f, int champ, String role, Integer opp, String slot, int from, int to) {
+        String hasSlot = " AND cardinality(p.item_order) >= " + to;
+        int sample = Db.i(q(f, champ, role, opp, w -> "SELECT count(*)::int AS n FROM match_participants p WHERE "
+                + w + hasSlot).get(0), "n");
+        var rows = q(f, champ, role, opp, w -> "SELECT p.item_order[" + from + ":" + to + "] AS item_ids, "
+                + "count(*)::int AS games, sum(p.win::int)::int AS wins FROM match_participants p WHERE " + w + hasSlot
+                + " GROUP BY 1 " + top(5));
+        List<Map<String, Object>> options = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = obj("itemIds", r.get("item_ids"));
+            m.putAll(withRate(r, sample));
+            options.add(m);
+        }
+        return slotOut(slot, sample, options);
+    }
+
     public Map<String, Object> championBuilds(Filter f, int championKey, Integer opponentKey) {
         String role = resolveRole(f, championKey);
         if (role == null) {
-            return obj("role", null, "games", 0, "winRate", 0, "runes", List.of(), "summonerSpells", List.of(),
-                    "boots", List.of(), "items", List.of(), "coreSets", List.of(), "skillOrder", null, "startingItems", null);
+            Map<String, Object> none = pick(List.of(), 0);
+            return obj("role", null, "games", 0, "winRate", 0, "runes", none, "summonerSpells", none,
+                    "boots", none, "itemSlots", List.of(), "items", List.of(), "coreSets", none, "skillOrder", null,
+                    "startingItems", null);
         }
 
         Map<String, Object> base = q(f, championKey, role, opponentKey, w -> "SELECT count(*)::int AS games, "
@@ -140,6 +184,8 @@ public class StatsQueries {
                 + "count(*) FILTER (WHERE starting_items IS NOT NULL)::int AS start_sample "
                 + "FROM match_participants p WHERE " + w).get(0);
         int games = Db.i(base, "games");
+
+        int minGames = Math.max(MIN_OPTION_GAMES, (int) Math.ceil(games * MIN_OPTION_SHARE));
 
         var runes = q(f, championKey, role, opponentKey, w -> "SELECT primary_style, sub_style, keystone, primary_perks, "
                 + "secondary_perks, stat_shards, count(*)::int AS games, sum(win::int)::int AS wins "
@@ -166,7 +212,7 @@ public class StatsQueries {
                 + "sum(win::int)::int AS wins FROM match_participants p WHERE " + w
                 + " AND p.starting_items IS NOT NULL GROUP BY starting_items " + top(5));
 
-        List<Object> runeOut = new ArrayList<>();
+        List<Map<String, Object>> runeOut = new ArrayList<>();
         for (Map<String, Object> r : runes) {
             Map<String, Object> m = obj("primaryStyle", r.get("primary_style"), "subStyle", r.get("sub_style"),
                     "keystone", r.get("keystone"), "primaryPerks", r.get("primary_perks"),
@@ -174,13 +220,13 @@ public class StatsQueries {
             m.putAll(withRate(r, games));
             runeOut.add(m);
         }
-        List<Object> spellOut = new ArrayList<>();
+        List<Map<String, Object>> spellOut = new ArrayList<>();
         for (Map<String, Object> r : spells) {
             Map<String, Object> m = obj("spellIds", List.of(r.get("a"), r.get("b")));
             m.putAll(withRate(r, games));
             spellOut.add(m);
         }
-        List<Object> bootOut = new ArrayList<>();
+        List<Map<String, Object>> bootOut = new ArrayList<>();
         for (Map<String, Object> r : boots) {
             Map<String, Object> m = obj("itemId", r.get("item_id"));
             m.putAll(withRate(r, games));
@@ -192,12 +238,26 @@ public class StatsQueries {
             m.putAll(withRate(r, games));
             itemOut.add(m);
         }
-        List<Object> coreOut = new ArrayList<>();
+        List<Map<String, Object>> coreOut = new ArrayList<>();
         for (Map<String, Object> r : core) {
             Map<String, Object> m = obj("itemIds", r.get("core_items"));
             m.putAll(withRate(r, games));
             coreOut.add(m);
         }
+
+        List<Map<String, Object>> startOut = new ArrayList<>();
+        int startSample = Db.i(base, "start_sample");
+        for (Map<String, Object> r : starts) {
+            Map<String, Object> m = obj("itemIds", r.get("starting_items"));
+            m.putAll(withRate(r, startSample));
+            startOut.add(m);
+        }
+        List<Object> itemSlots = new ArrayList<>();
+        itemSlots.add(slotOut("starting", startSample, startOut));
+        itemSlots.add(itemSlot(f, championKey, role, opponentKey, "core", 1, 3));
+        itemSlots.add(itemSlot(f, championKey, role, opponentKey, "fourth", 4, 4));
+        itemSlots.add(itemSlot(f, championKey, role, opponentKey, "fifth", 5, 5));
+        itemSlots.add(itemSlot(f, championKey, role, opponentKey, "sixth", 6, 6));
 
         Object skillOrder = null;
         if (Db.i(base, "skill_sample") > 0) {
@@ -219,8 +279,14 @@ public class StatsQueries {
         }
 
         return obj("role", role, "games", games, "winRate", ratio(Db.i(base, "wins"), games),
-                "runes", runeOut, "summonerSpells", spellOut, "boots", bootOut, "items", itemOut,
-                "coreSets", coreOut, "skillOrder", skillOrder, "startingItems", startingItems);
+                "minGames", minGames,
+                "runes", pick(runeOut, minGames),
+                "summonerSpells", pick(spellOut, minGames),
+                "boots", pick(bootOut, minGames),
+                "itemSlots", itemSlots,
+                "items", itemOut,
+                "coreSets", pick(coreOut, minGames),
+                "skillOrder", skillOrder, "startingItems", startingItems);
     }
 
     // ---------- matchups ----------
