@@ -23,6 +23,10 @@ public class StatsQueries {
     private final Db db;
     private final AppProps props;
 
+    private static final int MIN_OPTION_GAMES = 50;
+    private static final double MIN_OPTION_SHARE = 0.05;
+    private static final int MAX_ALTERNATIVES = 2;
+
     public StatsQueries(Db db, AppProps props) {
         this.db = db;
         this.props = props;
@@ -127,11 +131,26 @@ public class StatsQueries {
                 "pickRate", ratio(Db.i(r, "games"), games));
     }
 
+    private static Map<String, Object> pick(List<Map<String, Object>> options, int minGames) {
+        if (options.isEmpty()) {
+            return obj("recommended", null, "alternatives", List.of());
+        }
+        List<Map<String, Object>> alternatives = new ArrayList<>();
+        for (int i = 1; i < options.size() && alternatives.size() < MAX_ALTERNATIVES; i++) {
+            Map<String, Object> option = options.get(i);
+            if (Db.i(option, "games") >= minGames) {
+                alternatives.add(option);
+            }
+        }
+        return obj("recommended", options.get(0), "alternatives", alternatives);
+    }
+
     public Map<String, Object> championBuilds(Filter f, int championKey, Integer opponentKey) {
         String role = resolveRole(f, championKey);
         if (role == null) {
-            return obj("role", null, "games", 0, "winRate", 0, "runes", List.of(), "summonerSpells", List.of(),
-                    "boots", List.of(), "items", List.of(), "coreSets", List.of(), "skillOrder", null, "startingItems", null);
+            Map<String, Object> none = pick(List.of(), 0);
+            return obj("role", null, "games", 0, "winRate", 0, "runes", none, "summonerSpells", none,
+                    "boots", none, "items", List.of(), "coreSets", none, "skillOrder", null, "startingItems", null);
         }
 
         Map<String, Object> base = q(f, championKey, role, opponentKey, w -> "SELECT count(*)::int AS games, "
@@ -140,6 +159,8 @@ public class StatsQueries {
                 + "count(*) FILTER (WHERE starting_items IS NOT NULL)::int AS start_sample "
                 + "FROM match_participants p WHERE " + w).get(0);
         int games = Db.i(base, "games");
+
+        int minGames = Math.max(MIN_OPTION_GAMES, (int) Math.ceil(games * MIN_OPTION_SHARE));
 
         var runes = q(f, championKey, role, opponentKey, w -> "SELECT primary_style, sub_style, keystone, primary_perks, "
                 + "secondary_perks, stat_shards, count(*)::int AS games, sum(win::int)::int AS wins "
@@ -166,7 +187,7 @@ public class StatsQueries {
                 + "sum(win::int)::int AS wins FROM match_participants p WHERE " + w
                 + " AND p.starting_items IS NOT NULL GROUP BY starting_items " + top(5));
 
-        List<Object> runeOut = new ArrayList<>();
+        List<Map<String, Object>> runeOut = new ArrayList<>();
         for (Map<String, Object> r : runes) {
             Map<String, Object> m = obj("primaryStyle", r.get("primary_style"), "subStyle", r.get("sub_style"),
                     "keystone", r.get("keystone"), "primaryPerks", r.get("primary_perks"),
@@ -174,13 +195,13 @@ public class StatsQueries {
             m.putAll(withRate(r, games));
             runeOut.add(m);
         }
-        List<Object> spellOut = new ArrayList<>();
+        List<Map<String, Object>> spellOut = new ArrayList<>();
         for (Map<String, Object> r : spells) {
             Map<String, Object> m = obj("spellIds", List.of(r.get("a"), r.get("b")));
             m.putAll(withRate(r, games));
             spellOut.add(m);
         }
-        List<Object> bootOut = new ArrayList<>();
+        List<Map<String, Object>> bootOut = new ArrayList<>();
         for (Map<String, Object> r : boots) {
             Map<String, Object> m = obj("itemId", r.get("item_id"));
             m.putAll(withRate(r, games));
@@ -192,7 +213,7 @@ public class StatsQueries {
             m.putAll(withRate(r, games));
             itemOut.add(m);
         }
-        List<Object> coreOut = new ArrayList<>();
+        List<Map<String, Object>> coreOut = new ArrayList<>();
         for (Map<String, Object> r : core) {
             Map<String, Object> m = obj("itemIds", r.get("core_items"));
             m.putAll(withRate(r, games));
@@ -219,8 +240,13 @@ public class StatsQueries {
         }
 
         return obj("role", role, "games", games, "winRate", ratio(Db.i(base, "wins"), games),
-                "runes", runeOut, "summonerSpells", spellOut, "boots", bootOut, "items", itemOut,
-                "coreSets", coreOut, "skillOrder", skillOrder, "startingItems", startingItems);
+                "minGames", minGames,
+                "runes", pick(runeOut, minGames),
+                "summonerSpells", pick(spellOut, minGames),
+                "boots", pick(bootOut, minGames),
+                "items", itemOut,
+                "coreSets", pick(coreOut, minGames),
+                "skillOrder", skillOrder, "startingItems", startingItems);
     }
 
     // ---------- matchups ----------
