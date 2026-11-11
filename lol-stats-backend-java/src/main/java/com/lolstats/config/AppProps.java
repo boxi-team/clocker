@@ -20,7 +20,11 @@ public record AppProps(
         @DefaultValue("20") int firstImportCount,
         @DefaultValue("120") int refreshCooldownSeconds,
         @DefaultValue("100") int lowSampleGames,
-        @DefaultValue("120") int inboundRateLimit) {
+        @DefaultValue("120") int inboundRateLimit,
+        @DefaultValue("false") boolean enableDailyCrawl,
+        @DefaultValue("eun1") String dailyCrawlRegion,
+        @DefaultValue("1000") int dailyMatchesPerTier,
+        @DefaultValue("") String dailyMatchesOverrides) {
 
     public record Limit(int max, long windowMs) {}
 
@@ -33,5 +37,14 @@ public record AppProps(
                     return new Limit(Integer.parseInt(s[0]), Long.parseLong(s[1]));
                 })
                 .toList();
+    }
+
+    /** Daily match target for a tier: its value from dailyMatchesOverrides if listed, else dailyMatchesPerTier. */
+    public int dailyMatchesFor(String tier) {
+        for (String part : dailyMatchesOverrides.split(",")) {
+            String[] s = part.trim().split(":");
+            if (s.length == 2 && s[0].trim().equalsIgnoreCase(tier)) return Integer.parseInt(s[1].trim());
+        }
+        return dailyMatchesPerTier;
     }
 }

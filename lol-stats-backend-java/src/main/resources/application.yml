@@ -40,3 +40,12 @@ lol:
   refresh-cooldown-seconds: ${REFRESH_COOLDOWN_SECONDS:120}
   low-sample-games: ${LOW_SAMPLE_GAMES:100}
   inbound-rate-limit: ${INBOUND_RATE_LIMIT:120}
+  # Daily crawl (COL-22): imports new matches for every tier once a day so the win rates stay current.
+  # Off by default. Set ENABLE_DAILY_CRAWL=true on ONE machine only (shared database).
+  enable-daily-crawl: ${ENABLE_DAILY_CRAWL:false}
+  daily-crawl-region: ${DAILY_CRAWL_REGION:eun1}
+  daily-matches-per-tier: ${DAILY_MATCHES_PER_TIER:1000}
+  # Per-tier daily targets. Tiers not listed use daily-matches-per-tier.
+  daily-matches-overrides: "${DAILY_MATCHES_OVERRIDES:iron:500,bronze:1000,silver:1500,gold:1500,platinum:1500,emerald:1000,diamond:1000,master:1000,grandmaster:1000,challenger:1000}"
+  # Spring cron: second minute hour day month weekday. Default: every day at 03:00.
+  daily-crawl-cron: ${DAILY_CRAWL_CRON:0 0 3 * * *}
