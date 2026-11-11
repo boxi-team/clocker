@@ -62,15 +62,40 @@ function loadAssets() {
     return assetsPromise;
 }
 
+// ---- Icons ----
+// Champion name -> Data Dragon id, only where it is not just "the name without spaces/punctuation".
+const CHAMP_ID = {
+    Wukong: 'MonkeyKing', 'Nunu & Willump': 'Nunu', 'Renata Glasc': 'Renata', LeBlanc: 'Leblanc',
+    "Cho'Gath": 'Chogath', "Kha'Zix": 'Khazix', "Kai'Sa": 'Kaisa', "Vel'Koz": 'Velkoz', "Bel'Veth": 'Belveth',
+    "K'Sante": 'KSante', "Rek'Sai": 'RekSai', "Kog'Maw": 'KogMaw',
+};
+// Works for any champion (name like "Lee Sin" or id like "LeeSin"). The tiles URL needs no patch version.
+export const champIcon = (nameOrId) => {
+    const id = CHAMP_ID[nameOrId] ?? String(nameOrId).replace(/[^A-Za-z0-9]/g, '');
+    return `https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${id}_0.jpg`;
+};
+
+// Latest Data Dragon version, loaded once (needed only for profile icons).
+let ddVersionPromise;
+const ddVersion = () => (ddVersionPromise ??= fetch('https://ddragon.leagueoflegends.com/api/versions.json')
+    .then((r) => r.json()).then((v) => v[0])
+    .catch(() => { ddVersionPromise = undefined; return null; }));
+
+// Same name -> same icon, always. Used for players the backend doesn't know (profileIconId wins when it exists).
+const hash = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+const playerIcon = (p, v) => (v ? `https://ddragon.leagueoflegends.com/cdn/${v}/img/profileicon/${p.profileIconId ?? 1 + (hash(p.name) % 28)}.png` : undefined);
+
 export async function getMetaSnapshot() {
     try {
-        const { data } = await api('/tier-list?tier=all&minGames=1&limit=8');
-        const rows = data.map((r) => ({ champ: r.name, role: ROLE[r.role], wr: +(r.winRate * 100).toFixed(1) }));
+        // Ask for champions with a real sample first; only if the DB is that small, accept tiny samples (they get a "N games" label in the UI)
+        let { data } = await api('/tier-list?tier=all&minGames=20&limit=8');
+        if (!data.length) ({ data } = await api('/tier-list?tier=all&minGames=1&limit=8'));
+        const rows = data.map((r) => ({ champ: r.name, role: ROLE[r.role], wr: +(r.winRate * 100).toFixed(1), games: r.games, img: r.iconUrl || champIcon(r.championId) }));
         if (rows.length) return rows;
     } catch (e) {
         console.warn('Backend unavailable, showing mock meta:', e.message);
     }
-    return META; // dev fallback: Home never hangs on skeletons. Delete this line to see real errors.
+    return META.map((m) => ({ ...m, img: champIcon(m.champ) })); // dev fallback: Home never hangs on skeletons. Delete this line to see real errors.
 }
 
 // riotId = "Nume#TAG" (dacă lipsește #TAG, folosim regiunea ca tag)
@@ -152,6 +177,7 @@ export async function getMatchHistory(puuid) {
         id: m.matchId,
         win: m.win,
         mode: m.queue === 'ranked_solo' ? 'Ranked Solo' : 'Ranked Flex',
+        role: m.teamPosition || m.role || m.lane,
         ago: timeAgo(m.gameCreation),
         mins: Math.round(m.gameDuration / 60),
         champ: m.championId ?? String(m.championKey),
@@ -206,5 +232,26 @@ export async function getMatchDetail(matchId) {
 // ---- Still mock: the backend has no leaderboard / live-game endpoint yet ----
 const fake = (data) => new Promise((res) => setTimeout(() => res(data), 250));
 
-export const getTopPlayers = (region) => fake(TOP_PLAYERS.map((p) => ({ ...p, tag: region })));
-export const getLiveGames = () => fake(LIVE_GAMES);
+export const getTopPlayers = async (region) => {
+    const v = await ddVersion();
+    return fake(TOP_PLAYERS.map((p) => ({ ...p, tag: region, icon: playerIcon(p, v) })));
+};
+export const getLiveGames = () => fake(LIVE_GAMES.map((g) => ({ ...g, img: champIcon(g.champ) })));
+
+// ---- Champions (LoL Stats API v1.1.0). Same { data, meta } shape as the backend; no mock fallback. ----
+const qs = (o = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(o)) if (v != null && v !== '') p.set(k, v);
+    const s = p.toString();
+    return s ? `?${s}` : '';
+};
+const cid = (id) => encodeURIComponent(id);
+
+export const getChampions = (f) => api(`/champions${qs(f)}`);                          // static list
+export const getChampion = (id) => api(`/champions/${cid(id)}`);                        // raw DDragon detail (base stats, lore)
+export const getChampionFull = (id, f) => api(`/champions/${cid(id)}/full${qs(f)}`);    // champion page in one call
+export const getMatchups = (id, f) => api(`/champions/${cid(id)}/matchups${qs(f)}`);
+export const getChampionBuilds = (id, f) => api(`/champions/${cid(id)}/builds${qs(f)}`); // f.vs = lane opponent
+export const getTierList = (f) => api(`/tier-list${qs(f)}`);
+export const getPatches = () => api('/patches');
+export { api, loadAssets };

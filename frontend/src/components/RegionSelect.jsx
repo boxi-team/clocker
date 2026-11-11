@@ -1,8 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
-// Custom region dropdown (replaces the native <select>, which can't be styled when open).
-// Same contract as before: value + onChange(newValue). Keyboard: arrows, Home/End, Enter/Space, Esc.
 export default function RegionSelect({ value, onChange, options, label = 'Region' }) {
     const [open, setOpen] = useState(false);
     const [active, setActive] = useState(Math.max(0, options.indexOf(value)));
@@ -10,17 +8,73 @@ export default function RegionSelect({ value, onChange, options, label = 'Region
     const btn = useRef(null);
     const list = useRef(null);
     const id = useId();
+    const peekTimeout = useRef(null); // Ref pentru a ține minte timer-ul de închidere automată
 
     useEffect(() => {
         if (!open) return;
-        const close = (e) => { if (!root.current.contains(e.target)) setOpen(false); };
+        const close = (e) => {
+            if (!root.current.contains(e.target)) {
+                setOpen(false);
+                if (peekTimeout.current) clearTimeout(peekTimeout.current);
+            }
+        };
         document.addEventListener('pointerdown', close);
         list.current?.focus();
         return () => document.removeEventListener('pointerdown', close);
     }, [open]);
 
-    const openList = () => { setActive(Math.max(0, options.indexOf(value))); setOpen(true); };
-    const pick = (v) => { onChange(v); setOpen(false); btn.current.focus(); };
+    // Listener nativ pentru scroll
+    useEffect(() => {
+        const el = root.current;
+        if (!el) return;
+
+        const handleWheel = (e) => {
+            e.preventDefault(); // Blocăm scroll-ul ecranului
+
+            setOpen(true); // Deschidem imediat lista ca să vedem animația
+
+            const curr = options.indexOf(value);
+            let next = curr;
+            if (e.deltaY > 0 && curr < options.length - 1) {
+                next = curr + 1;
+            } else if (e.deltaY < 0 && curr > 0) {
+                next = curr - 1;
+            }
+
+            if (next !== curr) {
+                onChange(options[next]);
+                setActive(next);
+
+                // Așteptăm 10ms ca lista să se randeze (în caz că era închisă), apoi dăm scroll lin către element
+                setTimeout(() => {
+                    const listItem = document.getElementById(`${id}-${next}`);
+                    listItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }, 10);
+            }
+
+            // Resetăm timerul: dacă trec 1000ms (1 secundă) fără să mai dai scroll, lista se ascunde la loc
+            if (peekTimeout.current) clearTimeout(peekTimeout.current);
+            peekTimeout.current = setTimeout(() => {
+                setOpen(false);
+            }, 1000);
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [value, options, onChange, id]);
+
+    const openList = () => {
+        setActive(Math.max(0, options.indexOf(value)));
+        setOpen(true);
+        if (peekTimeout.current) clearTimeout(peekTimeout.current); // Oprim auto-închiderea la click manual
+    };
+
+    const pick = (v) => {
+        onChange(v);
+        setOpen(false);
+        btn.current.focus();
+        if (peekTimeout.current) clearTimeout(peekTimeout.current);
+    };
 
     const onListKey = (e) => {
         const last = options.length - 1;
@@ -29,7 +83,11 @@ export default function RegionSelect({ value, onChange, options, label = 'Region
         else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
         else if (e.key === 'End') { e.preventDefault(); setActive(last); }
         else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(options[active]); }
-        else if (e.key === 'Escape' || e.key === 'Tab') { setOpen(false); if (e.key === 'Escape') btn.current.focus(); }
+        else if (e.key === 'Escape' || e.key === 'Tab') {
+            setOpen(false);
+            if (e.key === 'Escape') btn.current.focus();
+            if (peekTimeout.current) clearTimeout(peekTimeout.current);
+        }
     };
 
     return (
@@ -45,7 +103,7 @@ export default function RegionSelect({ value, onChange, options, label = 'Region
             {open && (
                 <ul ref={list} role="listbox" tabIndex={-1} aria-label={label} aria-activedescendant={`${id}-${active}`}
                     onKeyDown={onListKey}
-                    className="dropdown-in absolute right-0 top-[calc(100%+8px)] z-50 w-44 origin-top-right overflow-hidden rounded-xl border border-white/[0.1] bg-[#0c0e15]/85 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_24px_60px_-12px_rgba(0,0,0,.85)] outline-none backdrop-blur-(--glass-blur)">
+                    className="dropdown-in absolute right-0 top-1/2 z-50 w-full -translate-y-1/2 origin-center max-h-60 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] rounded-xl border border-white/[0.1] bg-[#0c0e15]/95 p-1.5 shadow-[0_0_40px_rgba(0,0,0,0.8)] outline-none backdrop-blur-(--glass-blur)">
                     {options.map((r, i) => {
                         const selected = r === value;
                         return (
