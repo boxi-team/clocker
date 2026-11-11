@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
 public class CrawlService {
     private static final Set<String> APEX = Set.of("master", "grandmaster", "challenger");
 
-    public record CrawlPayload(String region, String queue, String tier, String division, int pages, int matchesPerPlayer) {}
+    public record CrawlPayload(String region, String queue, String tier, String division, int pages, int matchesPerPlayer,
+                               int maxStored) {}
 
     public record CrawlResult(int players, int stored, int skipped, int existing) {}
 
@@ -55,10 +56,12 @@ public class CrawlService {
         int existing = 0;
         int done = 0;
         for (JsonNode e : entries) {
+            if (p.maxStored() > 0 && stored >= p.maxStored()) break;
             String puuid = puuidOf(p.region(), e);
             if (puuid != null) {
                 JsonNode ids = riot.matchIds(p.region(), puuid, queue.id(), p.matchesPerPlayer(), null);
                 for (JsonNode id : ids) {
+                    if (p.maxStored() > 0 && stored >= p.maxStored()) break;
                     switch (matches.ingestMatch(p.region(), id.asText(), p.tier())) {
                         case STORED -> stored++;
                         case SKIPPED -> skipped++;
