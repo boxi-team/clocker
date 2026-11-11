@@ -91,17 +91,18 @@ class LogicTest {
     @Test
     void propsParseRateLimits() {
         AppProps props = new AppProps("", "", "", "20:1000,100:120000", "en_US", "", true, true, 2, 0.25, 20, 120, 100, 120,
-                false, "eun1", 1000, "");
+                false, "eun1", 1000, "", false, "euw1,eun1", 100);
         assertEquals(List.of(new Limit(20, 1000), new Limit(100, 120000)), props.limits());
     }
 
     @Test
     void propsDailyMatchesPerTier() {
         AppProps props = new AppProps("", "", "", "20:1000,100:120000", "en_US", "", true, true, 2, 0.25, 20, 120, 100, 120,
-                false, "eun1", 1000, "iron:500, silver:1500");
+                false, "eun1", 1000, "iron:500, silver:1500", false, "euw1, eun1", 100);
         assertEquals(500, props.dailyMatchesFor("iron"));
         assertEquals(1500, props.dailyMatchesFor("silver"));
         assertEquals(1000, props.dailyMatchesFor("master"));
+        assertEquals(List.of("euw1", "eun1"), props.leaderboardRegionList());
     }
 
     private static Map<Integer, ItemInfo> items() {

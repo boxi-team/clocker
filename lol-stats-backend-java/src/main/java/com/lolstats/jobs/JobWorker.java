@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lolstats.config.AppProps;
 import com.lolstats.ingest.CrawlService;
 import com.lolstats.ingest.CrawlService.CrawlPayload;
+import com.lolstats.ingest.LeaderboardService;
 import com.lolstats.ingest.PlayerRow;
 import com.lolstats.ingest.PlayerService;
 import java.util.ArrayList;
@@ -21,15 +22,18 @@ public class JobWorker implements SmartLifecycle {
     private final JobService jobs;
     private final PlayerService players;
     private final CrawlService crawl;
+    private final LeaderboardService leaderboard;
     private final AppProps props;
     private final ObjectMapper om;
     private final List<Thread> threads = new ArrayList<>();
     private volatile boolean running;
 
-    public JobWorker(JobService jobs, PlayerService players, CrawlService crawl, AppProps props, ObjectMapper om) {
+    public JobWorker(JobService jobs, PlayerService players, CrawlService crawl, LeaderboardService leaderboard,
+                     AppProps props, ObjectMapper om) {
         this.jobs = jobs;
         this.players = players;
         this.crawl = crawl;
+        this.leaderboard = leaderboard;
         this.props = props;
         this.om = om;
     }
@@ -107,6 +111,8 @@ public class JobWorker implements SmartLifecycle {
             }
             case "crawl":
                 return crawl.crawlLadder(om.treeToValue(job.payload(), CrawlPayload.class), progress);
+            case "leaderboard":
+                return leaderboard.refresh(job.payload().path("region").asText(), progress);
             default:
                 throw new IllegalStateException("unknown job type " + job.type());
         }
