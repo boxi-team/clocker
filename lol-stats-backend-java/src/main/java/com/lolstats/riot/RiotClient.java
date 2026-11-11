@@ -129,6 +129,14 @@ public class RiotClient {
         return get(Domain.ROUTING.get(region), "/riot/account/v1/accounts/by-riot-id/" + enc(gameName) + "/" + enc(tagLine));
     }
 
+    /** Riot ID (gameName, tagLine) of a player. */
+    public JsonNode accountByPuuid(String region, String puuid) {
+        String route = Domain.ROUTING.get(region);
+        // account-v1 has no sea route; accounts are global, so asia serves them.
+        if ("sea".equals(route)) route = "asia";
+        return get(route, "/riot/account/v1/accounts/by-puuid/" + enc(puuid));
+    }
+
     public JsonNode summoner(String region, String puuid) {
         return get(region, "/lol/summoner/v4/summoners/by-puuid/" + enc(puuid));
     }

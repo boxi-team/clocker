@@ -24,7 +24,10 @@ public record AppProps(
         @DefaultValue("false") boolean enableDailyCrawl,
         @DefaultValue("eun1") String dailyCrawlRegion,
         @DefaultValue("1000") int dailyMatchesPerTier,
-        @DefaultValue("") String dailyMatchesOverrides) {
+        @DefaultValue("") String dailyMatchesOverrides,
+        @DefaultValue("false") boolean enableLeaderboard,
+        @DefaultValue("euw1,eun1,na1,kr,br1,la1,oc1,tr1") String leaderboardRegions,
+        @DefaultValue("100") int leaderboardSize) {
 
     public record Limit(int max, long windowMs) {}
 
@@ -46,5 +49,10 @@ public record AppProps(
             if (s.length == 2 && s[0].trim().equalsIgnoreCase(tier)) return Integer.parseInt(s[1].trim());
         }
         return dailyMatchesPerTier;
+    }
+
+    /** "euw1,eun1" -> [euw1, eun1] */
+    public List<String> leaderboardRegionList() {
+        return Arrays.stream(leaderboardRegions.split(",")).map(String::trim).filter(r -> !r.isEmpty()).toList();
     }
 }

@@ -49,3 +49,9 @@ lol:
   daily-matches-overrides: "${DAILY_MATCHES_OVERRIDES:iron:500,bronze:1000,silver:1500,gold:1500,platinum:1500,emerald:1000,diamond:1000,master:1000,grandmaster:1000,challenger:1000}"
   # Spring cron: second minute hour day month weekday. Default: every day at 03:00.
   daily-crawl-cron: ${DAILY_CRAWL_CRON:0 0 3 * * *}
+  # Leaderboard: top players per region and tier, refreshed every 30 minutes.
+  # Off by default. Set ENABLE_LEADERBOARD=true on ONE machine only (shared database).
+  enable-leaderboard: ${ENABLE_LEADERBOARD:false}
+  leaderboard-regions: ${LEADERBOARD_REGIONS:euw1,eun1,na1,kr,br1,la1,oc1,tr1}
+  leaderboard-size: ${LEADERBOARD_SIZE:100}
+  leaderboard-cron: ${LEADERBOARD_CRON:0 */30 * * * *}
