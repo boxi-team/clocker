@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, ListOrdered, Radio, Trophy, ArrowRight } from 'lucide-react';
+import { Search, ListOrdered, Ban, Trophy, ArrowRight } from 'lucide-react';
 import RegionSelect from '../components/RegionSelect';
-import { Glass, Tile, ROLE_ICONS } from '../components/ui';
-import { REGIONS } from '../data/mock';
-import { getMetaSnapshot, getTopPlayers, getLiveGames, getSummoner, getMatchHistory } from '../services/riotService';
+import Link from '../components/Link';
+import RoleIcon from '../components/RoleIcon';
+import { Glass, Tile } from '../components/ui';
+import { EmptyState, ErrorState, pct } from '../components/champion/common';
+import { SEARCH_REGIONS } from '../lib/constants';
+import { getMetaSnapshot, getMostBanned, getTopPlayers, getSummoner, getMatchHistory } from '../services/riotService';
 import { useAsync } from '../hooks/useAsync';
+import { useRequest } from '../hooks/useRequest';
 import Stage from '../components/Stage';
+
+const REGION_LIST = Object.keys(SEARCH_REGIONS);
 
 function SearchHero({ onSearch, region, setRegion }) {
     const [name, setName] = useState('');
@@ -17,7 +23,7 @@ function SearchHero({ onSearch, region, setRegion }) {
             <label htmlFor="hero-search" className="sr-only">Riot ID</label>
             <input id="hero-search" value={name} onChange={(e) => setName(e.target.value)} placeholder="Riot ID / Summoner Name  (Name#TAG)"
                    className="min-w-0 flex-1 bg-transparent py-3 text-lg outline-none placeholder:text-white/35" />
-            <RegionSelect value={region} onChange={setRegion} options={REGIONS} />
+            <RegionSelect value={region} onChange={setRegion} options={REGION_LIST} />
             <button className="rounded-xl bg-accent px-6 py-3 font-semibold text-ink shadow-[0_0_24px_-4px_rgba(94,225,255,.6)] transition hover:bg-white active:scale-95">Search</button>
         </form>
     );
@@ -26,64 +32,52 @@ function SearchHero({ onSearch, region, setRegion }) {
 const WR_MIN = 35, WR_MAX = 65, LOW_SAMPLE = 30;
 const barWidth = (wr) => Math.min(100, Math.max(4, ((wr - WR_MIN) / (WR_MAX - WR_MIN)) * 100));
 
-const LOR_ROLE_ICONS = {
-    'Top': 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-top.svg',
-    'Jungle': 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-jungle.svg',
-    'Mid': 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-middle.svg',
-    'ADC': 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-bottom.svg',
-    'Support': 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-utility.svg'
-};
+// Link to the champion page, with the filters that match the meta snapshot (all ranks, that role).
+const champHref = (id, role) => `/champions/${encodeURIComponent(id)}?tier=all${role ? `&role=${role}` : ''}`;
 
-function MetaSnapshot() {
-    const meta = useAsync(getMetaSnapshot);
+const CardSkeletons = ({ n }) => Array.from({ length: n }, (_, i) => <div key={i} className="skeleton h-[84px]" />);
+
+// All data comes from the backend. Loading -> skeletons, failure -> error with Retry, empty DB -> message.
+function MetaSnapshot({ meta }) {
+    const { data, error, retry } = meta;
     return (
         <section className="animate-rise mx-auto mt-16 w-full max-w-5xl" style={{ animationDelay: '260ms' }}>
             <div className="mb-4 flex items-end justify-between">
                 <h2 className="font-display text-xl font-semibold tracking-tight">Current Patch Meta Snapshot</h2>
                 <span className="text-xs font-medium uppercase tracking-[0.14em] text-white/35">Win rate</span>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {meta === null
-                    ? Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton h-[84px]" />)
-                    : meta.map((m, i) => {
-                        // 2. Extragem calea către imagine din noul nostru dicționar
-                        const iconSrc = LOR_ROLE_ICONS[m.role];
-
-                        return (
-                            <Glass key={m.champ} className="animate-rise group flex items-center gap-3 p-3"
-                                   style={{ animationDelay: `${i * 60}ms` }}>
-                                <Tile label={m.champ} src={m.img} className="h-12 w-12 !rounded-xl" />
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate font-medium">{m.champ}</p>
-                                    <p className="flex items-center gap-1.5 text-xs text-white/50">
-                                        {iconSrc && (
-                                            <span
-                                                // Aici am pus gradientul exact ca la text-accent-shine
-                                                className="h-3.5 w-3.5 bg-gradient-to-r from-accent to-violet"
-                                                style={{
-                                                    mask: `url(${iconSrc}) center / contain no-repeat`,
-                                                    WebkitMask: `url(${iconSrc}) center / contain no-repeat`
-                                                }}
-                                                aria-hidden
-                                            />
-                                        )}
-                                        {m.role}
-                                        {m.games != null && m.games < LOW_SAMPLE && (
-                                            <span className="text-white/35" title="Few games: this win rate is not reliable yet">· {m.games} {m.games === 1 ? 'game' : 'games'}</span>
-                                        )}
-                                    </p>
-                                    <div className="mt-1.5 flex items-center gap-2">
-                                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
-                                            <div className="h-full rounded-full bg-gradient-to-r from-accent to-violet"
-                                                 style={{ width: `${barWidth(m.wr)}%` }} />
-                                        </div>
-                                        <span className="text-xs font-semibold tabular-nums text-accent">{m.wr}%</span>
-                                    </div>
-                                </div>
-                            </Glass>
-                        );
-                    })}
-            </div>
+            {error ? <ErrorState error={error} onRetry={retry} />
+                : !data ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4"><CardSkeletons n={8} /></div>
+                    : data.length === 0 ? <EmptyState>No ranked matches indexed yet. Stats appear here once matches are imported.</EmptyState>
+                        : (
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                {data.map((m, i) => (
+                                    <Link key={`${m.id}-${m.roleKey}`} href={champHref(m.id, m.roleKey)}
+                                          className="group block rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+                                        <Glass className="animate-rise flex items-center gap-3 p-3 group-hover:-translate-y-0.5"
+                                               style={{ animationDelay: `${i * 60}ms` }}>
+                                            <Tile label={m.champ} src={m.img} className="h-12 w-12 !rounded-xl" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate font-medium">{m.champ}</p>
+                                                <p className="flex items-center gap-1.5 text-xs text-white/50">
+                                                    <RoleIcon role={m.roleKey} />
+                                                    {m.role}
+                                                    {m.games != null && m.games < LOW_SAMPLE && (
+                                                        <span className="text-white/35" title="Few games: this win rate is not reliable yet">· {m.games} {m.games === 1 ? 'game' : 'games'}</span>
+                                                    )}
+                                                </p>
+                                                <div className="mt-1.5 flex items-center gap-2">
+                                                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+                                                        <div className="h-full rounded-full bg-gradient-to-r from-accent to-violet" style={{ width: `${barWidth(m.wr)}%` }} />
+                                                    </div>
+                                                    <span className="text-xs font-semibold tabular-nums text-accent">{m.wr}%</span>
+                                                </div>
+                                            </div>
+                                        </Glass>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
         </section>
     );
 }
@@ -111,7 +105,10 @@ const GRADE_STYLE = {
 
 const RowSkeletons = ({ n }) => Array.from({ length: n }, (_, i) => <div key={i} className="skeleton h-8 !rounded-lg" />);
 
-function Panel({ title, icon: Icon, linkLabel, onLink, children }) {
+// Panel footer link: `href` = client-side link (no reload), `onLink` = plain button.
+function Panel({ title, icon: Icon, linkLabel, href, onLink, children }) {
+    const cls = 'group mt-4 flex items-center gap-1.5 self-start rounded text-sm font-medium text-accent transition hover:text-white';
+    const inner = <>{linkLabel}<ArrowRight size={14} aria-hidden className="transition-transform group-hover:translate-x-0.5" /></>;
     return (
         <Glass className="flex flex-col p-5">
             <h3 className="mb-3 flex items-center gap-2.5 border-b border-white/[0.07] pb-3 font-display text-lg font-semibold tracking-tight">
@@ -121,54 +118,62 @@ function Panel({ title, icon: Icon, linkLabel, onLink, children }) {
                 {title}
             </h3>
             <div className="flex-1 space-y-0.5">{children}</div>
-            <button onClick={onLink} className="group mt-4 flex items-center gap-1.5 self-start rounded text-sm font-medium text-accent transition hover:text-white">
-                {linkLabel}
-                <ArrowRight size={14} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
-            </button>
+            {href ? <Link href={href} className={cls}>{inner}</Link> : <button onClick={onLink} className={cls}>{inner}</button>}
         </Glass>
     );
 }
 
-function TierPanel({ onNavigate }) {
-    const meta = useAsync(getMetaSnapshot);
+const PanelState = ({ req, n, empty, children }) => {
+    if (req.error) return <p className="px-2 py-3 text-sm text-white/45">{req.error.message}</p>;
+    if (!req.data) return <RowSkeletons n={n} />;
+    if (req.data.length === 0) return <p className="px-2 py-3 text-sm text-white/45">{empty}</p>;
+    return children;
+};
+
+function TierPanel({ meta }) {
     return (
-        <Panel title="Tier list" icon={ListOrdered} linkLabel="See the full tier list" onLink={() => onNavigate('tiers')}>
-            {meta === null ? <RowSkeletons n={8} /> : meta.map((m) => {
-                const g = grade(m.wr);
-                return (
-                    <div key={m.champ} className="flex items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-white/[0.04]">
-                        <span className={`grid h-5 w-5 place-items-center rounded font-display text-[11px] font-bold ring-1 ring-inset ${GRADE_STYLE[g]}`}>{g}</span>
-                        <Tile label={m.champ} src={m.img} className="h-7 w-7 text-[10px] !rounded-md" />
-                        <span className="flex-1 truncate">{m.champ}</span>
-                        <span className="tabular-nums text-white/55">{m.wr}%</span>
-                    </div>
-                );
-            })}
+        <Panel title="Tier list" icon={ListOrdered} linkLabel="See the full tier list" href="/champions?view=tier-list&tier=all">
+            <PanelState req={meta} n={8} empty="No data yet.">
+                {meta.data?.map((m) => {
+                    const g = grade(m.wr);
+                    return (
+                        <Link key={`${m.id}-${m.roleKey}`} href={champHref(m.id, m.roleKey)}
+                              className="flex items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-white/[0.06]">
+                            <span className={`grid h-5 w-5 place-items-center rounded font-display text-[11px] font-bold ring-1 ring-inset ${GRADE_STYLE[g]}`}>{g}</span>
+                            <Tile label={m.champ} src={m.img} className="h-7 w-7 text-[10px] !rounded-md" />
+                            <span className="flex-1 truncate">{m.champ}</span>
+                            <RoleIcon role={m.roleKey} />
+                            <span className="w-12 text-right tabular-nums text-white/55">{m.wr}%</span>
+                        </Link>
+                    );
+                })}
+            </PanelState>
         </Panel>
     );
 }
 
-function LivePanel({ onNavigate }) {
-    const games = useAsync(getLiveGames);
+// Replaces "Live games" (it was 100% mock and the backend has no live endpoint).
+function BannedPanel({ banned }) {
     return (
-        <Panel title="Live games" icon={Radio} linkLabel="See all live games" onLink={() => onNavigate('live')}>
-            {games === null ? <RowSkeletons n={6} /> : games.map((g) => (
-                <div key={g.id} className="flex items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-white/[0.04]">
-                    <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-loss/70" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-loss" />
-                    </span>
-                    <Tile label={g.champ} src={g.img} className="h-7 w-7 text-[10px] !rounded-md" />
-                    <span className="flex-1 truncate">{g.player}<span className="block text-xs text-white/40">{g.mode}</span></span>
-                    <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-xs tabular-nums text-white/60">{g.mins}m</span>
-                </div>
-            ))}
+        <Panel title="Most banned" icon={Ban} linkLabel="See all champions" href="/champions">
+            <PanelState req={banned} n={8} empty="No ban data yet.">
+                {banned.data?.map((b, i) => (
+                    <Link key={b.id} href={champHref(b.id)}
+                          className="flex items-center gap-3 rounded-lg px-2 py-1 text-sm transition hover:bg-white/[0.06]">
+                        <span className="w-4 font-display font-bold tabular-nums text-white/30">{i + 1}</span>
+                        <Tile label={b.name} src={b.img} className="h-7 w-7 text-[10px] !rounded-md" />
+                        <span className="flex-1 truncate">{b.name}</span>
+                        <span className="tabular-nums text-loss">{pct(b.banRate)}</span>
+                    </Link>
+                ))}
+            </PanelState>
         </Panel>
     );
 }
 
 const PODIUM = ['text-amber-300', 'text-slate-300', 'text-orange-400'];
 
+// Still mock until the leaderboard endpoint exists.
 function PlayersPanel({ region, onSearch, onNavigate }) {
     const players = useAsync(() => getTopPlayers(region), [region]);
     return (
@@ -263,7 +268,6 @@ function TypewriterTitle({ main, accent, isSpecial, isReady }) {
                     {typedAccent}
                 </span>
             </span>
-            {/* Am mutat bg-accent în afara condiției și am adăugat delay-500 și duration-1000 */}
             <span className={`w-[4px] h-[0.8em] ml-1.5 bg-accent transition-opacity duration-1000 ease-in-out ${isDoneTyping ? 'opacity-0 delay-500' : 'opacity-100'} ${!isReady ? 'animate-pulse' : ''}`} />
         </div>
     );
@@ -271,6 +275,10 @@ function TypewriterTitle({ main, accent, isSpecial, isReady }) {
 
 export default function Home({ onSearch, onNavigate, summoner }) {
     const [region, setRegion] = useState(summoner?.region || 'EUW');
+
+    // Real data (no mock): one request each, shared by the sections that need it.
+    const meta = useRequest(getMetaSnapshot, []);
+    const banned = useRequest(() => getMostBanned(8).catch(() => []), []);
 
     // 1. Decidem ce afișăm DIRECT CÂND SE ÎNCARCĂ PAGINA (synchronous state), nu în useEffect
     const [choice] = useState(() => {
@@ -390,14 +398,14 @@ export default function Home({ onSearch, onNavigate, summoner }) {
                 <div className="animate-rise relative z-20" style={{ animationDelay: '120ms' }}>
                     <SearchHero onSearch={onSearch} region={region} setRegion={setRegion} />
                 </div>
-                <MetaSnapshot />
+                <MetaSnapshot meta={meta} />
             </Stage>
 
             <Stage edge snap className={BAND}>
                 <Reveal className="mx-auto max-w-5xl px-4 pt-16">
                     <div className="grid gap-4 md:grid-cols-3">
-                        <TierPanel onNavigate={onNavigate} />
-                        <LivePanel onNavigate={onNavigate} />
+                        <TierPanel meta={meta} />
+                        <BannedPanel banned={banned} />
                         <PlayersPanel region={region} onSearch={onSearch} onNavigate={onNavigate} />
                     </div>
                 </Reveal>

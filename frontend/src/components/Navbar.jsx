@@ -91,7 +91,7 @@ export default function Navbar({ page, onNavigate, onSearch }) {
 
   const submit = (e) => { e.preventDefault(); if (q.trim()) { onSearch(q.trim(), 'EUW'); setQ(''); } };
   return (
-      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_8px_32px_-12px_rgba(0,0,0,.5)] backdrop-blur-(--nav-blur) backdrop-saturate-150">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_8px_32px_-12px_rgba(0,0,0,.5)] backdrop-blur-(--nav-blur) backdrop-saturate-150">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
           <button
               onClick={() => onNavigate('home')}

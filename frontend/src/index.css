@@ -131,6 +131,9 @@ html {
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* Scroll columns (Profile): content fades out at the top and bottom edge instead of being cut sharply */
+
+
 /* Reduced motion: stops entrances and loaders, but the slow background lights keep drifting */
 @media (prefers-reduced-motion: reduce) {
     .animate-rise, .animate-donut, .skeleton {

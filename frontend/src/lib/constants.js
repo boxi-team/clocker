@@ -5,6 +5,9 @@ export const REGIONS = ['br1', 'eun1', 'euw1', 'jp1', 'kr', 'la1', 'la2', 'me1',
 export const TAGS = ['Assassin', 'Fighter', 'Mage', 'Marksman', 'Support', 'Tank'];
 export const DEFAULTS = { patch: 'latest', tier: 'master_plus', queue: 'ranked_solo', region: 'all' };
 
+// Regions offered in the search box: UI code -> backend platform code
+export const SEARCH_REGIONS = { EUW: 'euw1', NA: 'na1', EUNE: 'eun1', KR: 'kr', BR: 'br1', LAN: 'la1', OCE: 'oc1', TR: 'tr1' };
+
 export const ROLE_LABEL = { top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', support: 'Support' };
 export const QUEUE_LABEL = { ranked_solo: 'Ranked Solo/Duo', ranked_flex: 'Ranked Flex' };
 export const tierLabel = (t) => (t === 'all' ? 'All ranks' : t.endsWith('_plus') ? `${t[0].toUpperCase()}${t.slice(1, -5)}+` : t[0].toUpperCase() + t.slice(1));

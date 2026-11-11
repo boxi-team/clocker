@@ -1,10 +1,11 @@
 // Leagă frontend-ul de backend. Componentele NU se schimbă:
 // returnăm exact aceleași forme ca în data/mock.js.
-import { META, PLAYER, MATCHES, TOP_PLAYERS, LIVE_GAMES } from '../data/mock';
+import { TOP_PLAYERS, LIVE_GAMES } from '../data/mock';
+import { SEARCH_REGIONS } from '../lib/constants';
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 // Regiunile din UI -> regiunile din backend
-const REGION = { EUW: 'euw1', NA: 'na1', EUNE: 'eun1', KR: 'kr', BR: 'br1', LAN: 'la1', OCE: 'oc1', TR: 'tr1' };
+const REGION = SEARCH_REGIONS;
 // Rolurile din backend -> rolurile din UI
 const ROLE = { top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', support: 'Support' };
 
@@ -85,30 +86,39 @@ const ddVersion = () => (ddVersionPromise ??= fetch('https://ddragon.leagueofleg
 const hash = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
 const playerIcon = (p, v) => (v ? `https://ddragon.leagueoflegends.com/cdn/${v}/img/profileicon/${p.profileIconId ?? 1 + (hash(p.name) % 28)}.png` : undefined);
 
+// Top champions of the current meta (Home). Throws when the backend fails, the caller shows the error.
 export async function getMetaSnapshot() {
-    try {
-        // Ask for champions with a real sample first; only if the DB is that small, accept tiny samples (they get a "N games" label in the UI)
-        let { data } = await api('/tier-list?tier=all&minGames=20&limit=8');
-        if (!data.length) ({ data } = await api('/tier-list?tier=all&minGames=1&limit=8'));
-        const rows = data.map((r) => ({ champ: r.name, role: ROLE[r.role], wr: +(r.winRate * 100).toFixed(1), games: r.games, img: r.iconUrl || champIcon(r.championId) }));
-        if (rows.length) return rows;
-    } catch (e) {
-        console.warn('Backend unavailable, showing mock meta:', e.message);
+    // Ask for champions with a real sample first; only if the DB is that small, accept tiny samples (they get a "N games" label in the UI)
+    let { data } = await api('/tier-list?tier=all&minGames=20&limit=8');
+    if (!data.length) ({ data } = await api('/tier-list?tier=all&minGames=1&limit=8'));
+    return data.map((r) => ({
+        id: r.championId,          // Data Dragon id, used for /champions/:id
+        champ: r.name,
+        roleKey: r.role,           // backend role ('mid'), used in URLs and icons
+        role: ROLE[r.role],        // UI label ('Mid')
+        wr: +(r.winRate * 100).toFixed(1),
+        games: r.games,
+        img: r.iconUrl || champIcon(r.championId),
+    }));
+}
+
+// Most banned champions (one row per champion, the tier list repeats a champion once per role).
+export async function getMostBanned(limit = 8) {
+    const { data } = await api('/tier-list?tier=all&minGames=1&sort=banRate&limit=100');
+    const seen = new Set();
+    const out = [];
+    for (const r of data) {
+        if (r.banRate <= 0 || seen.has(r.championKey)) continue;
+        seen.add(r.championKey);
+        out.push({ id: r.championId, name: r.name, banRate: r.banRate, img: r.iconUrl || champIcon(r.championId) });
+        if (out.length === limit) break;
     }
-    return META.map((m) => ({ ...m, img: champIcon(m.champ) })); // dev fallback: Home never hangs on skeletons. Delete this line to see real errors.
+    return out;
 }
 
 // riotId = "Nume#TAG" (dacă lipsește #TAG, folosim regiunea ca tag)
-export async function getSummoner(riotId, region) {
-    try {
-        return await loadSummoner(riotId, region);
-    } catch (e) {
-        if (!e.offline) throw e; // real answers from the backend (player not found, ...) are shown to the user
-        console.warn('Backend unavailable, showing mock player:', e.message);
-        const [name, tag = region] = riotId.split('#');
-        return { ...PLAYER, name, tag, region }; // dev fallback
-    }
-}
+// Backend errors (player not found, backend offline...) are thrown and shown to the user. No mock fallback.
+export const getSummoner = (riotId, region) => loadSummoner(riotId, region);
 
 async function loadSummoner(riotId, region) {
     const [gameName, tagLine = region] = riotId.split('#');
@@ -146,7 +156,7 @@ async function loadSummoner(riotId, region) {
 // 'pending' | 'ready' | 'empty' (importul de meciuri din fundal)
 export async function getMatchesStatus(puuid) {
     const path = who.get(puuid);
-    if (!path) return 'ready'; // jucător mock
+    if (!path) return 'ready';
     const { data } = await api(path);
     return data.matchesStatus;
 }
@@ -154,7 +164,7 @@ export async function getMatchesStatus(puuid) {
 // Pornește un refresh. Întoarce { ok: true } sau { ok: false, message } (ex. cooldown).
 export async function refreshPlayer(puuid) {
     const path = who.get(puuid);
-    if (!path) return { ok: true }; // jucător mock
+    if (!path) return { ok: false, message: 'Player not loaded' };
     let res;
     try {
         res = await fetch(`${API}/v1${path}/refresh`, { method: 'POST' });
@@ -168,16 +178,23 @@ export async function refreshPlayer(puuid) {
     return { ok: true };
 }
 
+// Aggregate stats of the player (solo queue): { summary, byRole[], last20 }
+export async function getPlayerStats(puuid) {
+    const path = who.get(puuid);
+    if (!path) return null;
+    const { data } = await api(`${path}/stats`);
+    return data;
+}
+
 export async function getMatchHistory(puuid) {
-    if (!puuid) return [];
-    if (!who.has(puuid)) return MATCHES; // jucător mock (backend oprit)
+    if (!puuid || !who.has(puuid)) return [];
     const [{ data }, A] = await Promise.all([api(`${who.get(puuid)}/matches?count=20`), loadAssets()]);
     const item = (id) => (id ? A.itemMap[id] ?? { name: String(id) } : null);
     return data.map((m) => ({
         id: m.matchId,
         win: m.win,
         mode: m.queue === 'ranked_solo' ? 'Ranked Solo' : 'Ranked Flex',
-        role: m.teamPosition || m.role || m.lane,
+        role: m.role,
         ago: timeAgo(m.gameCreation),
         mins: Math.round(m.gameDuration / 60),
         champ: m.championId ?? String(m.championKey),
@@ -189,7 +206,6 @@ export async function getMatchHistory(puuid) {
         a: m.assists,
         cs: m.cs,
         vision: m.visionScore,
-        wards: 0, // backend-ul nu salvează control wards
         items: m.items.slice(0, 6).map(item),
         trinket: item(m.items[6]),
     }));
@@ -210,6 +226,7 @@ export async function getMatchDetail(matchId) {
                     puuid: p.puuid,
                     name: p.gameName ?? 'Unknown',
                     tag: p.tagLine,
+                    role: p.role,
                     champ,
                     champImg: p.championId ? `${A.cdn}/champion/${p.championId}.png` : undefined,
                     level: p.champLevel,

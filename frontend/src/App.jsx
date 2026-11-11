@@ -15,7 +15,8 @@ export default function App() {
     const seg = pathname.split('/').filter(Boolean);
     const page = seg[0] === 'champions' ? (seg[1] ? 'champion' : 'champions') : localPage;
     const go = (p) => {
-        if (p === 'tiers' || p === 'champions') return navigate('/champions');
+        if (p === 'tiers') return navigate('/champions?view=tier-list');
+        if (p === 'champions') return navigate('/champions');
         if (seg[0] === 'champions') navigate('/');
         setPage(p);
     };
@@ -38,7 +39,7 @@ export default function App() {
             ) : (
                 <Stage fixed blobs className="flex-1">
                     <main key={page} className="animate-rise">
-                        {page === 'profile' && summoner && <Profile summoner={summoner} />}
+                        {page === 'profile' && summoner && <Profile key={`${summoner.region}:${summoner.name}`} summoner={summoner} />}
                         {page === 'champions' && <Champions />}
                         {page === 'champion' && <ChampionDetail id={decodeURIComponent(seg[1])} />}
                         {!['profile', 'champions', 'champion'].includes(page) && (
