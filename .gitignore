@@ -3,7 +3,13 @@ dist/
 build/
 .gradle/
 .idea/
+/lol-stats-backend-java/src/main/java/com/lolstats/tools/CrawlRunner.java
+/init-db.sql
+/.env
 init-db.sql
 StandaloneCrawler.class
+.env
+*.class
+
 .env
 *.class

@@ -1,9 +1,15 @@
 import { useLayoutEffect, useEffect, useRef, useState } from 'react';
-import { Home, User, Radio, ListOrdered, Trophy, Search } from 'lucide-react';
+import { Home, Radio, ListOrdered, Trophy, User, Search } from 'lucide-react';
 import logo from '../assets/logo.png';
+import { useAuth } from '../hooks/useAuth';
+
+// Profile este ULTIMUL element din navbar, exact cum a cerut userul
 const TABS = [
-  ['home', 'Home', Home], ['profile', 'Profile', User], ['live', 'Live Game', Radio],
-  ['tiers', 'Tier Lists', ListOrdered], ['leaders', 'Leaderboards', Trophy],
+  ['home', 'Home', Home],
+  ['live', 'Live Game', Radio],
+  ['tiers', 'Tier Lists', ListOrdered],
+  ['leaders', 'Leaderboards', Trophy],
+  ['profile', 'Profile', User],
 ];
 
 // ---- Tab indicator animation: square -> circle -> slides to the next tab -> unfolds ----
@@ -23,12 +29,15 @@ export default function Navbar({ page, onNavigate, onSearch }) {
   const lastPage = useRef(undefined);
   const [lit, setLit] = useState(isTab(page) ? page : null); // which tab looks selected (text/icon)
 
+  const { user, activeSummoner } = useAuth();
+
   const rectOf = (id) => {
     const el = tabRefs.current[id];
     return el ? { left: el.offsetLeft, top: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null;
   };
   const rest = (r) => {
-    const s = indRef.current.style;
+    const s = indRef.current?.style;
+    if (!s) return;
     shown.current = r;
     if (!r) { s.opacity = '0'; return; }
     Object.assign(s, { opacity: '1', left: `${r.left}px`, top: `${r.top}px`, width: `${r.w}px`, height: `${r.h}px`, borderRadius: `${RADIUS}px` });
@@ -83,16 +92,18 @@ export default function Navbar({ page, onNavigate, onSearch }) {
   useEffect(() => {
     const fit = () => { if (!anim.current && indRef.current) rest(isTab(page) ? rectOf(page) : null); };
     const ro = new ResizeObserver(fit);
-    ro.observe(navRef.current);
+    if (navRef.current) ro.observe(navRef.current);
     document.fonts?.ready.then(fit);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   const submit = (e) => { e.preventDefault(); if (q.trim()) { onSearch(q.trim(), 'EUW'); setQ(''); } };
+
   return (
       <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_8px_32px_-12px_rgba(0,0,0,.5)] backdrop-blur-(--nav-blur) backdrop-saturate-150">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
+          {/* Logo */}
           <button
               onClick={() => onNavigate('home')}
               style={{ cursor: 'pointer' }}
@@ -106,6 +117,8 @@ export default function Navbar({ page, onNavigate, onSearch }) {
             />
             <span style={{ cursor: 'pointer' }}>boxi<span className="text-accent-shine">.gg</span></span>
           </button>
+
+          {/* Search bar */}
           <form onSubmit={submit} role="search"
                 className="hidden items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 transition focus-within:border-accent/50 focus-within:bg-white/[0.06] md:flex">
             <Search size={14} className="text-white/40" aria-hidden />
@@ -114,15 +127,23 @@ export default function Navbar({ page, onNavigate, onSearch }) {
                    className="w-44 bg-transparent text-sm outline-none placeholder:text-white/35" />
             <kbd className="rounded border border-white/10 px-1.5 font-sans text-[10px] text-white/35">EUW</kbd>
           </form>
+
+          {/* Navigation Bar: Home, Live Game, Tier Lists, Leaderboards, and PROFILE as the last item! */}
           <nav ref={navRef} aria-label="Main" className="no-scrollbar relative ml-auto flex gap-0.5 overflow-x-auto rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
             <span ref={indRef} aria-hidden className="pointer-events-none absolute opacity-0 bg-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,.08)]" />
             {TABS.map(([id, label, Icon]) => {
               const active = page === id;
               const on = lit === id;
+              // If logged in and on profile tab, display summoner name or custom badge
+              const tabLabel = (id === 'profile' && user)
+                  ? (activeSummoner?.rawName || user.displayName || 'Profile')
+                  : label;
+
               return (
                   <button key={id} ref={(el) => { tabRefs.current[id] = el; }} onClick={() => onNavigate(id)} aria-current={active ? 'page' : undefined}
                           className={`relative z-10 flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-accent/60 ${on ? 'text-white' : 'text-white/55 hover:bg-white/[0.05] hover:text-white/90'}`}>
-                    <Icon size={15} className={on ? 'text-accent' : ''} aria-hidden /> {label}
+                    <Icon size={15} className={on ? 'text-accent' : ''} aria-hidden />
+                    <span>{tabLabel}</span>
                   </button>
               );
             })}

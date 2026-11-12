@@ -17,6 +17,7 @@ spring:
   flyway:
     # Existing databases created by the old Node migrate script are adopted as-is (all DDL is IF NOT EXISTS).
     baseline-on-migrate: true
+    validate-on-migrate: false
   jackson:
     default-property-inclusion: always
   web:
