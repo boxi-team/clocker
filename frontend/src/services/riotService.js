@@ -128,7 +128,7 @@ async function loadSummoner(riotId, region) {
     try {
         return await loadSummonerInner(riotId, region);
     } finally {
-        console.log(`[profile] ${riotId} (${region}) loaded in ${Math.round(performance.now() - start)} ms total`);
+        console.log(`[profile] ${riotId} (${region}) load attempt took ${Math.round(performance.now() - start)} ms total`);
     }
 }
 
