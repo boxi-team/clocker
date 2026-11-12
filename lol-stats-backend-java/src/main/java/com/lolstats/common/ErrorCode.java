@@ -6,6 +6,7 @@ public enum ErrorCode {
     CHAMPION_NOT_FOUND,
     PLAYER_NOT_FOUND,
     MATCH_NOT_FOUND,
+    NOT_IN_GAME,
     JOB_NOT_FOUND,
     NOT_FOUND,
     UNSUPPORTED_MATCH,

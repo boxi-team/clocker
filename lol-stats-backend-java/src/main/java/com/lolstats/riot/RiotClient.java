@@ -187,6 +187,16 @@ public class RiotClient {
         return get(region, "/lol/league/v4/" + tier + "leagues/by-queue/" + queueRiot);
     }
 
+    /** Active game of a player (spectator-v5). Riot answers 404 when the player is not in a game. */
+    public JsonNode activeGame(String region, String puuid) {
+        return get(region, "/lol/spectator/v5/active-games/by-summoner/" + enc(puuid));
+    }
+
+    /** Featured live games of a platform (spectator-v5). */
+    public JsonNode featuredGames(String region) {
+        return get(region, "/lol/spectator/v5/featured-games");
+    }
+
     /** Fallback when a league entry has no puuid. */
     public JsonNode summonerBySummonerId(String region, String summonerId) {
         return get(region, "/lol/summoner/v4/summoners/" + enc(summonerId));
