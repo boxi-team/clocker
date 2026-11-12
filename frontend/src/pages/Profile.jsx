@@ -144,6 +144,7 @@ export default function Profile({ summoner }) {
     const [version, setVersion] = useState(0);    // crește când importul s-a terminat: reîncarcă profil și meciuri
     const [note, setNote] = useState('');
     const [polling, setPolling] = useState(0);    // crește când pornim un refresh, ca să repornească polling-ul
+    const [partial, setPartial] = useState(0);    // crește la fiecare verificare cât importul e încă 'pending': arată meciurile deja importate
 
     // Profile (rank, LP, level...). Refetched after an update; the previous data stays on screen meanwhile.
     const profile = useRequest(() => getSummoner(summoner.name, summoner.region), [summoner.name, summoner.region, version]);
@@ -162,7 +163,8 @@ export default function Profile({ summoner }) {
             setStatus(s);
             if (s === 'pending') {
                 wasPending = true;
-                timer = setTimeout(check, 3000);
+                setPartial((n) => n + 1);       // reload the match list: matches stored so far appear while the import runs
+                timer = setTimeout(check, 2000);
             } else if (wasPending) {
                 setVersion((v) => v + 1);
             }
@@ -171,7 +173,7 @@ export default function Profile({ summoner }) {
         return () => { alive = false; clearTimeout(timer); };
     }, [p?.puuid, polling]);
 
-    const matches = useRequest(() => (p?.puuid ? getMatchHistory(p.puuid).catch(() => []) : []), [p?.puuid, version]);
+    const matches = useRequest(() => (p?.puuid ? getMatchHistory(p.puuid).catch(() => []) : []), [p?.puuid, version, partial]);
 
     const onRefresh = async () => {
         setNote('');

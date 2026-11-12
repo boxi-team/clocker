@@ -21,6 +21,8 @@ import com.lolstats.jobs.JobService;
 import com.lolstats.query.PlayerQueries;
 import com.lolstats.query.PlayerQueries.MatchPage;
 import com.lolstats.query.PlayerQueries.PlayerFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/players/{region}/{gameName}/{tagLine}")
 public class PlayerController {
+    private static final Logger log = LoggerFactory.getLogger(PlayerController.class);
     private static final String PATCH_RE = "^\\d+\\.\\d+$";
 
     private final Db db;
@@ -57,6 +60,10 @@ public class PlayerController {
         this.props = props;
     }
 
+    private static long ms(long fromNanos, long toNanos) {
+        return (toNanos - fromNanos) / 1_000_000;
+    }
+
     private record Who(String region, String gameName, String tagLine) {}
 
     private static Who who(String region, String gameName, String tagLine) {
@@ -67,8 +74,11 @@ public class PlayerController {
     private PlayerRow requirePlayer(Who w) {
         PlayerRow player = players.findPlayer(w.region(), w.gameName(), w.tagLine());
         if (player == null) {
-            throw AppException.notFound(ErrorCode.PLAYER_NOT_FOUND,
-                    w.gameName() + "#" + w.tagLine() + " is not loaded yet. GET the player profile first.");
+            // Not in the database yet: load it from Riot (throws PLAYER_NOT_FOUND if the Riot ID does not exist),
+            // exactly like the profile endpoint does, so the order of the frontend's calls does not matter.
+            log.info("[player] {}#{} not in db, loading from Riot", w.gameName(), w.tagLine());
+            player = players.fetchAndStorePlayer(w.region(), w.gameName(), w.tagLine());
+            startRefresh(player, true);
         }
         return player;
     }
@@ -112,13 +122,23 @@ public class PlayerController {
     // ---- profile (creates the player on first sight) ----
     @GetMapping
     public ResponseEntity<Object> get(@PathVariable String region, @PathVariable String gameName, @PathVariable String tagLine) {
+        long t0 = System.nanoTime();
         Who w = who(region, gameName, tagLine);
         PlayerRow player = players.findPlayer(w.region(), w.gameName(), w.tagLine());
-        if (player == null) {
+        long t1 = System.nanoTime();
+        boolean created = player == null;
+        if (created) {
             player = players.fetchAndStorePlayer(w.region(), w.gameName(), w.tagLine());
+            long t2 = System.nanoTime();
             startRefresh(player, true);
+            log.info("[profile] {}#{} new player: db lookup {} ms, Riot fetch+store {} ms, enqueue refresh {} ms",
+                    w.gameName(), w.tagLine(), ms(t0, t1), ms(t1, t2), ms(t2, System.nanoTime()));
         }
-        return Api.cached(30, ok(profile(player)));
+        long t3 = System.nanoTime();
+        Map<String, Object> body = profile(player);
+        log.info("[profile] {}#{} {}: lookup {} ms, build profile {} ms", w.gameName(), w.tagLine(),
+                created ? "created" : "existing", ms(t0, t1), ms(t3, System.nanoTime()));
+        return Api.cached(30, ok(body));
     }
 
     // ---- refresh ("Update" button) ----
