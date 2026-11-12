@@ -18,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class RiotClient {
+    private static final Logger log = LoggerFactory.getLogger(RiotClient.class);
     private final AppProps props;
     private final ObjectMapper om;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -55,6 +58,11 @@ public class RiotClient {
         return URI.create(base + path + (qs.isEmpty() ? "" : "?" + qs));
     }
 
+    /** Path without long ids (puuids) so logs stay short and do not leak identifiers. */
+    private static String shortPath(String path) {
+        return path.replaceAll("/[A-Za-z0-9_-]{40,}", "/<id>");
+    }
+
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
@@ -72,12 +80,14 @@ public class RiotClient {
         RateLimiter limiter = limiterFor(host);
 
         for (int attempt = 0; ; attempt++) {
+            long t0 = System.nanoTime();
             try {
                 limiter.acquire();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Interrupted", e);
             }
+            long t1 = System.nanoTime();
             HttpResponse<String> res;
             try {
                 res = http.send(HttpRequest.newBuilder(urlFor(host, path, query))
@@ -95,6 +105,9 @@ public class RiotClient {
             }
 
             int status = res.statusCode();
+            log.info("[riot] {} {} -> {} | limiter wait {} ms, http {} ms{}", host, shortPath(path), status,
+                    (t1 - t0) / 1_000_000, (System.nanoTime() - t1) / 1_000_000,
+                    attempt > 0 ? " (attempt " + (attempt + 1) + ")" : "");
             if (status / 100 == 2) {
                 try {
                     return om.readTree(res.body());

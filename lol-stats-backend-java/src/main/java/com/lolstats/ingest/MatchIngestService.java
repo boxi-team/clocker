@@ -8,6 +8,7 @@ import com.lolstats.ingest.ItemService.Classified;
 import com.lolstats.riot.RiotClient;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -124,7 +125,25 @@ public class MatchIngestService {
      */
     public Outcome ingestMatch(String region, String matchId, String tierBucket, boolean forceTimeline) {
         if (db.exists("SELECT 1 FROM matches WHERE match_id = ?", matchId)) return Outcome.EXISTS;
+        return ingestNewMatch(region, matchId, tierBucket, forceTimeline);
+    }
 
+    /** Ids (out of {@code matchIds}) that are already stored: one query instead of one per match. */
+    public Set<String> existingMatchIds(List<String> matchIds) {
+        if (matchIds.isEmpty()) return Set.of();
+        Set<String> found = new HashSet<>();
+        for (Map<String, Object> r : db.rows("SELECT match_id FROM matches WHERE match_id = ANY(?::text[])",
+                Db.textArray(matchIds))) {
+            found.add(Db.s(r, "match_id"));
+        }
+        return found;
+    }
+
+    /**
+     * Like {@link #ingestMatch} but without the "already stored?" query, for callers that checked with
+     * {@link #existingMatchIds}. A race with another worker is still safe (ON CONFLICT DO NOTHING).
+     */
+    public Outcome ingestNewMatch(String region, String matchId, String tierBucket, boolean forceTimeline) {
         JsonNode m = riot.match(region, matchId);
         JsonNode info = m.path("info");
         int queueId = info.path("queueId").asInt();
@@ -167,6 +186,8 @@ public class MatchIngestService {
                 return Outcome.EXISTS;
             }
 
+            // Participants and bans are sent as one batch each (one round trip) instead of one INSERT per row.
+            List<Object[]> participantRows = new ArrayList<>();
             for (JsonNode p : info.path("participants")) {
                 List<Integer> slots = new ArrayList<>();
                 for (int i = 0; i < 6; i++) slots.add(p.path("item" + i).asInt());
@@ -178,15 +199,7 @@ public class MatchIngestService {
                 TimelineInfo ti = tl == null ? null : parseTimeline(tl, puuid);
                 List<Integer> itemOrder = ti == null ? null : ItemService.completedInOrder(ti.purchases(), itemMap);
 
-                db.update("INSERT INTO match_participants ("
-                                + "match_id, puuid, game_name, tag_line, team_id, champion_id, role, win, "
-                                + "kills, deaths, assists, cs, gold, damage, vision_score, champ_level, "
-                                + "items, boots, completed_items, core_items, spell1, spell2, "
-                                + "primary_style, sub_style, keystone, primary_perks, secondary_perks, stat_shards, "
-                                + "skill_order, skill_max_order, starting_items, item_order, "
-                                + "patch, queue_id, region, tier_bucket, game_creation, game_duration) VALUES ("
-                                + "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::int[],?,?::int[],?::int[],?,?,"
-                                + "?,?,?,?::int[],?::int[],?::int[],?,?,?::int[],?::int[],?,?,?,?,?,?)",
+                participantRows.add(new Object[]{
                         matchId, puuid, textOrNull(p, "riotIdGameName"), textOrNull(p, "riotIdTagline"),
                         p.path("teamId").asInt(), p.path("championId").asInt(),
                         Domain.ROLE_FROM_RIOT.get(p.path("teamPosition").asText()), p.path("win").asBoolean(),
@@ -201,16 +214,29 @@ public class MatchIngestService {
                         ti == null ? null : ti.skillOrder(), ti == null ? null : ti.skillMaxOrder(),
                         ti == null ? null : Db.intArray(ti.startingItems()),
                         Db.intArray(itemOrder),
-                        patch, queueId, region, tierBucket, gameCreation, gameDuration);
+                        patch, queueId, region, tierBucket, gameCreation, gameDuration});
             }
+            db.jdbc().batchUpdate("INSERT INTO match_participants ("
+                    + "match_id, puuid, game_name, tag_line, team_id, champion_id, role, win, "
+                    + "kills, deaths, assists, cs, gold, damage, vision_score, champ_level, "
+                    + "items, boots, completed_items, core_items, spell1, spell2, "
+                    + "primary_style, sub_style, keystone, primary_perks, secondary_perks, stat_shards, "
+                    + "skill_order, skill_max_order, starting_items, item_order, "
+                    + "patch, queue_id, region, tier_bucket, game_creation, game_duration) VALUES ("
+                    + "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::int[],?,?::int[],?::int[],?,?,"
+                    + "?,?,?,?::int[],?::int[],?::int[],?,?,?::int[],?::int[],?,?,?,?,?,?)", participantRows);
 
+            List<Object[]> banRows = new ArrayList<>();
             for (JsonNode team : info.path("teams")) {
                 for (JsonNode ban : team.path("bans")) {
                     if (ban.path("championId").asInt() <= 0) continue;
-                    db.update("INSERT INTO match_bans (match_id, team_id, pick_turn, champion_id) VALUES (?,?,?,?) "
-                                    + "ON CONFLICT DO NOTHING",
-                            matchId, team.path("teamId").asInt(), ban.path("pickTurn").asInt(), ban.path("championId").asInt());
+                    banRows.add(new Object[]{matchId, team.path("teamId").asInt(), ban.path("pickTurn").asInt(),
+                            ban.path("championId").asInt()});
                 }
+            }
+            if (!banRows.isEmpty()) {
+                db.jdbc().batchUpdate("INSERT INTO match_bans (match_id, team_id, pick_turn, champion_id) VALUES (?,?,?,?) "
+                        + "ON CONFLICT DO NOTHING", banRows);
             }
             return Outcome.STORED;
         });

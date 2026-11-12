@@ -15,6 +15,7 @@ const cap = (s) => (s ? s[0] + s.slice(1).toLowerCase() : s);
 // Sună backend-ul. Întoarce { data, meta } sau aruncă eroare.
 async function api(path) {
     let res;
+    const t0 = performance.now();
     try {
         res = await fetch(`${API}/v1${path}`, { cache: 'no-store' });
     } catch {
@@ -23,6 +24,8 @@ async function api(path) {
         throw err;
     }
     const body = await res.json();
+    // Timing of every backend call, visible in the browser console (F12)
+    console.log(`[api] GET ${path.split('?')[0]} -> ${res.status} in ${Math.round(performance.now() - t0)} ms`);
     if (!res.ok) throw new Error(body.error?.message ?? 'Request failed');
     return body;
 }
@@ -121,6 +124,15 @@ export async function getMostBanned(limit = 8) {
 export const getSummoner = (riotId, region) => loadSummoner(riotId, region);
 
 async function loadSummoner(riotId, region) {
+    const start = performance.now();
+    try {
+        return await loadSummonerInner(riotId, region);
+    } finally {
+        console.log(`[profile] ${riotId} (${region}) loaded in ${Math.round(performance.now() - start)} ms total`);
+    }
+}
+
+async function loadSummonerInner(riotId, region) {
     const [gameName, tagLine = region] = riotId.split('#');
     const path = `/players/${REGION[region]}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
 

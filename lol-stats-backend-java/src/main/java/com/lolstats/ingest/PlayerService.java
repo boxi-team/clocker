@@ -11,14 +11,26 @@ import com.lolstats.jobs.Progress;
 import com.lolstats.riot.RiotClient;
 import com.lolstats.riot.RiotNotFoundException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Player profiles (Riot account, summoner, ranks) and their match imports. */
 @Service
 public class PlayerService {
+    private static final Logger log = LoggerFactory.getLogger(PlayerService.class);
+    /** Matches downloaded and stored at the same time for one player import (database pool has 10 connections). */
+    private static final int IMPORT_PARALLELISM = 3;
     public record ImportResult(int stored, int skipped, int existing) {}
 
     private final Db db;
@@ -106,24 +118,58 @@ public class PlayerService {
             for (JsonNode id : ids) toFetch.add(new ToFetch(id.asText(), queue.name()));
         }
 
-        int stored = 0;
-        int skipped = 0;
-        int existing = 0;
-        int done = 0;
-        if (onProgress != null) onProgress.update(0, toFetch.size());
-        for (ToFetch f : toFetch) {
-            Outcome outcome = matches.ingestMatch(player.region(), f.id(), tierBucketFor(puuid, f.queue()));
-            switch (outcome) {
-                case STORED -> stored++;
-                case SKIPPED -> skipped++;
-                case EXISTS -> existing++;
+        long t0 = System.nanoTime();
+        // One query tells us which matches we already have; only the new ones are downloaded.
+        Set<String> known = matches.existingMatchIds(toFetch.stream().map(ToFetch::id).toList());
+        List<ToFetch> fresh = toFetch.stream().filter(f -> !known.contains(f.id())).toList();
+        Map<String, String> tierByQueue = new HashMap<>();
+        for (QueueInfo queue : Domain.QUEUES) tierByQueue.put(queue.name(), tierBucketFor(puuid, queue.name()));
+
+        AtomicInteger stored = new AtomicInteger();
+        AtomicInteger skipped = new AtomicInteger();
+        AtomicInteger existing = new AtomicInteger(known.size());
+        AtomicInteger done = new AtomicInteger();
+        if (onProgress != null) onProgress.update(0, fresh.size());
+
+        // Download and store a few matches at a time, so Riot waits and database writes overlap.
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(IMPORT_PARALLELISM, fresh.size())));
+        try {
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            for (ToFetch f : fresh) {
+                futures.add(CompletableFuture.runAsync(() -> {
+                    Outcome outcome = matches.ingestNewMatch(player.region(), f.id(), tierByQueue.get(f.queue()), false);
+                    switch (outcome) {
+                        case STORED -> stored.incrementAndGet();
+                        case SKIPPED -> skipped.incrementAndGet();
+                        case EXISTS -> existing.incrementAndGet();
+                    }
+                    int n = done.incrementAndGet();
+                    if (onProgress != null) {
+                        synchronized (onProgress) {
+                            onProgress.update(n, fresh.size());
+                        }
+                    }
+                }, pool));
             }
-            if (onProgress != null) onProgress.update(++done, toFetch.size());
+            for (CompletableFuture<Void> fut : futures) {
+                try {
+                    fut.join();
+                } catch (CompletionException e) {
+                    futures.forEach(x -> x.cancel(true));
+                    if (e.getCause() instanceof RuntimeException re) throw re;
+                    throw e;
+                }
+            }
+        } finally {
+            pool.shutdownNow();
         }
+        log.info("[import] {}: {} listed, {} already stored, {} new ({} stored, {} skipped) in {} ms",
+                puuid.substring(0, 8), toFetch.size(), known.size(), fresh.size(), stored.get(), skipped.get(),
+                (System.nanoTime() - t0) / 1_000_000);
 
         db.update("UPDATE players SET last_refreshed_at = now(), "
                 + "last_match_creation = COALESCE((SELECT max(game_creation) FROM match_participants WHERE puuid = ?), last_match_creation) "
                 + "WHERE puuid = ?", puuid, puuid);
-        return new ImportResult(stored, skipped, existing);
+        return new ImportResult(stored.get(), skipped.get(), existing.get());
     }
 }

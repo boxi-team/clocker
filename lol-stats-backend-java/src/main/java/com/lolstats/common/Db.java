@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.postgresql.util.PGobject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +23,10 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class Db {
+    private static final Logger log = LoggerFactory.getLogger(Db.class);
+    /** Queries slower than this (ms) are logged. */
+    private static final long SLOW_MS = 100;
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper om;
 
@@ -31,7 +37,24 @@ public class Db {
 
     public JdbcTemplate jdbc() { return jdbc; }
 
+    private static void logIfSlow(String kind, String sql, long startNanos) {
+        long ms = (System.nanoTime() - startNanos) / 1_000_000;
+        if (ms >= SLOW_MS) {
+            String oneLine = sql.replaceAll("\\s+", " ");
+            log.info("[db] slow {} {} ms: {}", kind, ms, oneLine.length() > 140 ? oneLine.substring(0, 140) + "..." : oneLine);
+        }
+    }
+
     public List<Map<String, Object>> rows(String sql, Object... args) {
+        long t0 = System.nanoTime();
+        try {
+            return queryRows(sql, args);
+        } finally {
+            logIfSlow("query", sql, t0);
+        }
+    }
+
+    private List<Map<String, Object>> queryRows(String sql, Object... args) {
         return jdbc.query(sql, (rs, n) -> {
             ResultSetMetaData md = rs.getMetaData();
             Map<String, Object> row = new LinkedHashMap<>();
@@ -51,7 +74,12 @@ public class Db {
     }
 
     public int update(String sql, Object... args) {
-        return jdbc.update(sql, args);
+        long t0 = System.nanoTime();
+        try {
+            return jdbc.update(sql, args);
+        } finally {
+            logIfSlow("update", sql, t0);
+        }
     }
 
     private Object convert(Object o) {
