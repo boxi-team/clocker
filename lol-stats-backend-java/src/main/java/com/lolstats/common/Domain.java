@@ -22,6 +22,23 @@ public final class Domain {
             Map.entry("oc1", "sea"), Map.entry("ph2", "sea"), Map.entry("sg2", "sea"),
             Map.entry("th2", "sea"), Map.entry("tw2", "sea"), Map.entry("vn2", "sea"));
 
+    /** Short names shown in the UI ("EUW", "EUNE", ...). */
+    public static final Map<String, String> REGION_LABEL = Map.ofEntries(
+            Map.entry("br1", "BR"), Map.entry("eun1", "EUNE"), Map.entry("euw1", "EUW"), Map.entry("jp1", "JP"),
+            Map.entry("kr", "KR"), Map.entry("la1", "LAN"), Map.entry("la2", "LAS"), Map.entry("me1", "ME"),
+            Map.entry("na1", "NA"), Map.entry("oc1", "OCE"), Map.entry("ph2", "PH"), Map.entry("ru", "RU"),
+            Map.entry("sg2", "SG"), Map.entry("th2", "TH"), Map.entry("tr1", "TR"), Map.entry("tw2", "TW"),
+            Map.entry("vn2", "VN"));
+
+    /** "EUW" or "euw1" -> "euw1"; null when unknown. */
+    public static String platformOf(String regionOrLabel) {
+        if (regionOrLabel == null) return null;
+        String v = regionOrLabel.toLowerCase();
+        if (REGIONS.contains(v)) return v;
+        return REGION_LABEL.entrySet().stream()
+                .filter(e -> e.getValue().equalsIgnoreCase(regionOrLabel)).map(Map.Entry::getKey).findFirst().orElse(null);
+    }
+
     /** "EUW1_123" -> "euw1", "KR_123" -> "kr" */
     public static String regionFromMatchId(String matchId) {
         String prefix = matchId.split("_")[0].toLowerCase();
