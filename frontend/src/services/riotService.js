@@ -1,6 +1,6 @@
 // Leagă frontend-ul de backend. Componentele NU se schimbă:
 // returnăm exact aceleași forme ca în data/mock.js.
-import { TOP_PLAYERS, LIVE_GAMES } from '../data/mock';
+import { LIVE_GAMES } from '../data/mock';
 import { SEARCH_REGIONS } from '../lib/constants';
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
@@ -75,16 +75,6 @@ export const champIcon = (nameOrId) => {
     const id = CHAMP_ID[nameOrId] ?? String(nameOrId).replace(/[^A-Za-z0-9]/g, '');
     return `https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${id}_0.jpg`;
 };
-
-// Latest Data Dragon version, loaded once (needed only for profile icons).
-let ddVersionPromise;
-const ddVersion = () => (ddVersionPromise ??= fetch('https://ddragon.leagueoflegends.com/api/versions.json')
-    .then((r) => r.json()).then((v) => v[0])
-    .catch(() => { ddVersionPromise = undefined; return null; }));
-
-// Same name -> same icon, always. Used for players the backend doesn't know (profileIconId wins when it exists).
-const hash = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
-const playerIcon = (p, v) => (v ? `https://ddragon.leagueoflegends.com/cdn/${v}/img/profileicon/${p.profileIconId ?? 1 + (hash(p.name) % 28)}.png` : undefined);
 
 // Top champions of the current meta (Home). Throws when the backend fails, the caller shows the error.
 export async function getMetaSnapshot() {
@@ -246,15 +236,6 @@ export async function getMatchDetail(matchId) {
     }
 }
 
-// ---- Still mock: the backend has no leaderboard / live-game endpoint yet ----
-const fake = (data) => new Promise((res) => setTimeout(() => res(data), 250));
-
-export const getTopPlayers = async (region) => {
-    const v = await ddVersion();
-    return fake(TOP_PLAYERS.map((p) => ({ ...p, tag: region, icon: playerIcon(p, v) })));
-};
-export const getLiveGames = () => fake(LIVE_GAMES.map((g) => ({ ...g, img: champIcon(g.champ) })));
-
 // ---- Champions (LoL Stats API v1.1.0). Same { data, meta } shape as the backend; no mock fallback. ----
 const qs = (o = {}) => {
     const p = new URLSearchParams();
@@ -263,6 +244,62 @@ const qs = (o = {}) => {
     return s ? `?${s}` : '';
 };
 const cid = (id) => encodeURIComponent(id);
+
+// ---- Leaderboard (real data, GET /v1/leaderboard) ----
+// Backend row -> the shape the UI uses. Same player shape for the mini board (Home) and the full page.
+const mapLeaderboardRow = (r, i) => ({
+    rank: r.rank ?? i + 1,
+    puuid: r.puuid,
+    name: r.gameName,
+    tag: r.tagLine,
+    tier: cap(r.tier),
+    div: r.division ?? '',       // '' for Master / Grandmaster / Challenger
+    lp: r.leaguePoints,
+    wins: r.wins,
+    losses: r.losses,
+    games: r.wins + r.losses,
+    wr: +((r.winRate ?? (r.wins + r.losses ? r.wins / (r.wins + r.losses) : 0)) * 100).toFixed(1),
+    icon: r.profileIconUrl,
+});
+
+// Top players of one tier (iron..challenger) in one region, already sorted by division then LP by the backend.
+// region = UI code ('EUW'). Returns { meta, rows }. Throws when the backend fails (the caller shows the error).
+export async function getLeaderboard(region, tier = 'challenger', limit = 100) {
+    const { data, meta } = await api(`/leaderboard${qs({ region: REGION[region], tier, limit })}`);
+    return { meta, rows: data.map(mapLeaderboardRow) };
+}
+
+// Mini leaderboard on Home: top players of Challenger in the selected region.
+export const getTopPlayers = async (region, limit = 10) => (await getLeaderboard(region, 'challenger', limit)).rows;
+
+// ── Real Live Game Endpoints (Spectator API via Backend) ──
+export async function getPlayerLiveGame(riotId, region = 'EUW') {
+    if (!riotId) return null;
+    const [gameName, tagLine = region] = riotId.split('#');
+    const regCode = REGION[region] || region.toLowerCase();
+    const path = `/players/${regCode}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/live`;
+    try {
+        const res = await api(path);
+        return res?.data ?? null;
+    } catch (err) {
+        // 404 / NOT_IN_GAME means player is not playing right now
+        if (err.message?.toLowerCase().includes('not') || err.message?.includes('404')) {
+            return null;
+        }
+        throw err;
+    }
+}
+
+export async function getFeaturedLiveGames(region = 'EUW') {
+    try {
+        const res = await api(`/live/featured${qs({ region: REGION[region] || region })}`);
+        return res?.data ?? [];
+    } catch {
+        return [];
+    }
+}
+
+export const getLiveGames = () => getFeaturedLiveGames();
 
 export const getChampions = (f) => api(`/champions${qs(f)}`);                          // static list
 export const getChampion = (id) => api(`/champions/${cid(id)}`);                        // raw DDragon detail (base stats, lore)

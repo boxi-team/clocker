@@ -33,6 +33,15 @@
     --nav-blur: 140px;
 }
 
+/* Force immediate GPU rasterization so massive 160px blurs render instantaneously */
+.backdrop-blur-\(--glass-blur\),
+.backdrop-blur-\(--nav-blur\) {
+    -webkit-backdrop-filter: blur(var(--glass-blur, 160px));
+    backdrop-filter: blur(var(--glass-blur, 160px));
+    transform: translateZ(0);
+    will-change: backdrop-filter;
+}
+
 body { font-feature-settings: "cv11", "ss01"; }
 ::selection { background: rgba(94, 225, 255, 0.3); }
 

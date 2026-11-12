@@ -173,21 +173,23 @@ function BannedPanel({ banned }) {
 
 const PODIUM = ['text-amber-300', 'text-slate-300', 'text-orange-400'];
 
-// Still mock until the leaderboard endpoint exists.
-function PlayersPanel({ region, onSearch, onNavigate }) {
-    const players = useAsync(() => getTopPlayers(region), [region]);
+// Real data: top 10 Challenger of the selected region (same endpoint as the Leaderboard page).
+function PlayersPanel({ region, onSearch }) {
+    const players = useRequest(() => getTopPlayers(region, 10), [region]);
     return (
-        <Panel title={`Top 10 · ${region}`} icon={Trophy} linkLabel="See the full leaderboard" onLink={() => onNavigate('leaders')}>
-            {players === null ? <RowSkeletons n={10} /> : players.map((p, i) => (
-                <button key={p.name} onClick={() => onSearch(`${p.name}#${p.tag}`, region)}
-                        className="flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition hover:bg-white/[0.06]">
-                    <span className={`w-4 font-display font-bold tabular-nums ${PODIUM[i] ?? 'text-white/30'}`}>{i + 1}</span>
-                    <Tile label={p.name} src={p.icon} className="h-7 w-7 text-[10px] !rounded-full" />
-                    <span className="flex-1 truncate">{p.name}</span>
-                    <span className="font-medium tabular-nums text-accent">{p.lp} LP</span>
-                    <span className="w-12 text-right tabular-nums text-white/55">{p.wr}%</span>
-                </button>
-            ))}
+        <Panel title={`Top 10 · ${region}`} icon={Trophy} linkLabel="See the full leaderboard" href={`/leaderboard?region=${region}`}>
+            <PanelState req={players} n={10} empty="No ranked players found yet.">
+                {players.data?.map((p, i) => (
+                    <button key={p.puuid} onClick={() => onSearch(`${p.name}#${p.tag}`, region)}
+                            className="flex w-full items-center gap-3 rounded-lg px-2 py-1 text-left text-sm transition hover:bg-white/[0.06]">
+                        <span className={`w-4 font-display font-bold tabular-nums ${PODIUM[i] ?? 'text-white/30'}`}>{i + 1}</span>
+                        <Tile label={p.name} src={p.icon} className="h-7 w-7 text-[10px] !rounded-full" />
+                        <span className="flex-1 truncate">{p.name}</span>
+                        <span className="font-medium tabular-nums text-accent">{p.lp} LP</span>
+                        <span className="w-12 text-right tabular-nums text-white/55">{p.wr}%</span>
+                    </button>
+                ))}
+            </PanelState>
         </Panel>
     );
 }
@@ -273,7 +275,7 @@ function TypewriterTitle({ main, accent, isSpecial, isReady }) {
     );
 }
 
-export default function Home({ onSearch, onNavigate, summoner }) {
+export default function Home({ onSearch, summoner }) {
     const [region, setRegion] = useState(summoner?.region || 'EUW');
 
     // Real data (no mock): one request each, shared by the sections that need it.
@@ -406,7 +408,7 @@ export default function Home({ onSearch, onNavigate, summoner }) {
                     <div className="grid gap-4 md:grid-cols-3">
                         <TierPanel meta={meta} />
                         <BannedPanel banned={banned} />
-                        <PlayersPanel region={region} onSearch={onSearch} onNavigate={onNavigate} />
+                        <PlayersPanel region={region} onSearch={onSearch} />
                     </div>
                 </Reveal>
                 <Reveal className="mx-auto max-w-5xl px-4 pb-16 pt-20">

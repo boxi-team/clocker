@@ -5,3 +5,4 @@ out/
 *.iml
 .env
 *.log
+/src/main/java/com/lolstats/tools/CrawlRunner.java

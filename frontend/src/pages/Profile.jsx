@@ -25,22 +25,22 @@ function RankBlock({ title, r }) {
 }
 function Sidebar({ p }) {
     return (
-        <Glass className="flex flex-col overflow-hidden !backdrop-blur-none lg:h-full">
-            {/* Un singur container scrollabil: rotița merge oriunde pe sidebar */}
+        <Glass className="flex flex-col overflow-hidden lg:h-full">
+            {/* Un singur container scrollabil fluid: complet transparent, fără suprapuneri */}
             <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {/* Header sticky: rămâne sus, conținutul trece pe sub el */}
-                <div className="sticky top-0 z-10 flex flex-col items-center gap-3 border-b border-white/[0.08] bg-white/[0.04] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_8px_32px_-12px_rgba(0,0,0,.5)] backdrop-blur-(--nav-blur) backdrop-saturate-150">
+                {/* Header profil: complet transparent, fără fundal lăptos sau linie de separare */}
+                <div className="flex flex-col items-center gap-3 p-6 pb-2">
                     <div className="relative">
                         <div className="rounded-full bg-gradient-to-br from-accent to-violet p-[2px]">
                             <Tile label={p.name} src={p.profileIcon} className="h-20 w-20 !rounded-full text-lg ring-4 ring-ink" />
                         </div>
                         <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-ink px-2 py-0.5 text-[11px] font-semibold tabular-nums">{p.level}</span>
                     </div>
-                    <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">{p.name}<span className="font-medium text-white/35">#{p.tag}</span></h2>
+                    <h2 className="mt-1 font-display text-2xl font-bold tracking-tight text-white">{p.name}<span className="font-medium text-white/35">#{p.tag}</span></h2>
                     <RankBadge tier={p.ranks.solo.tier} div={p.ranks.solo.div} />
                 </div>
 
-                <div className="divide-y divide-white/[0.07] px-6">
+                <div className="divide-y divide-white/[0.07] px-6 pb-6">
                     <RankBlock title="Ranked Solo/Duo" r={p.ranks.solo} />
                     <RankBlock title="Ranked Flex" r={p.ranks.flex} />
                     <div className="py-5">
@@ -117,11 +117,25 @@ function Performance({ matches }) {
     );
 }
 
-const SkeletonRows = ({ n }) => Array.from({ length: n }, (_, i) => <div key={i} className="skeleton h-[104px]" />);
+const SkeletonRows = ({ n }) => Array.from({ length: n }, (_, i) => (
+    <Glass key={i} className="h-[104px] p-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+            <div className="skeleton h-14 w-14 !rounded-xl opacity-60" />
+            <div className="space-y-2">
+                <div className="skeleton h-4 w-28 !rounded-md opacity-60" />
+                <div className="skeleton h-3 w-20 !rounded-md opacity-40" />
+            </div>
+        </div>
+        <div className="hidden sm:flex items-center gap-3">
+            <div className="skeleton h-8 w-24 !rounded-lg opacity-40" />
+            <div className="skeleton h-8 w-32 !rounded-lg opacity-40" />
+        </div>
+    </Glass>
+));
 
 
 const GRID = 'mx-auto grid max-w-7xl items-start gap-6 px-4 lg:grid-cols-[320px_minmax(0,1fr)]';
-const PAD = 'min-w-0 pt-[calc(4.1rem+1.5rem)] pb-6 lg:h-dvh';
+const PAD = 'min-w-0 pt-6 pb-6 lg:h-[calc(100dvh-4.1rem)]';
 const COL = `${PAD} lg:overflow-y-auto lg:overscroll-contain no-scrollbar`; // dreapta: scroll propriu
 const COL_FIXED = PAD;                                                      // stânga: fără scroll, Sidebar-ul se ocupă
 
@@ -182,8 +196,21 @@ export default function Profile({ summoner }) {
     if (!p) {
         return (
             <div className={GRID}>
-                <div className={COL_FIXED}><div className="skeleton h-[640px]" /></div>
-                <div className={`${COL} space-y-3`}><SkeletonRows n={5} /></div>
+                <div className={COL_FIXED}>
+                    <Glass className="h-[640px] p-6 flex flex-col items-center gap-4">
+                        <div className="skeleton h-20 w-20 !rounded-full mt-4 opacity-70" />
+                        <div className="skeleton h-6 w-36 !rounded-lg opacity-60" />
+                        <div className="skeleton h-24 w-24 !rounded-full my-3 opacity-50" />
+                        <div className="w-full space-y-3 mt-4">
+                            <div className="skeleton h-14 w-full !rounded-xl opacity-40" />
+                            <div className="skeleton h-14 w-full !rounded-xl opacity-40" />
+                            <div className="skeleton h-14 w-full !rounded-xl opacity-40" />
+                        </div>
+                    </Glass>
+                </div>
+                <div className={`${COL} space-y-3`}>
+                    <SkeletonRows n={5} />
+                </div>
             </div>
         );
     }

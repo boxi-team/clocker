@@ -57,7 +57,11 @@ public class ItemService {
         boolean purchasable = it.path("gold").path("purchasable").asBoolean(true);
         boolean completed = !tags.contains("Consumable") && !tags.contains("Trinket")
                 && purchasable && it.path("into").size() == 0 && cost >= 1000;
-        return new ItemInfo(tags.contains("Boots"), completed, cost);
+        String name = it.path("name").asText().toLowerCase();
+        boolean isBoots = tags.stream().anyMatch(t -> t.equalsIgnoreCase("Boots"))
+                || name.contains("boots") || name.contains("greaves") || name.contains("treads")
+                || name.contains("shoes") || name.contains("soles");
+        return new ItemInfo(isBoots, completed, cost);
     }
 
     /** Item data for a {@code major.minor} patch; falls back to the newest synced patch. null if none synced. */
@@ -111,5 +115,25 @@ public class ItemService {
             }
         }
         return out;
+    }
+
+    /**
+     * Finds the last boot item purchased in the match timeline.
+     * Prioritizes upgraded boots over basic boots if both were bought.
+     */
+    public static Integer lastBoots(List<Integer> purchases, Map<Integer, ItemInfo> map) {
+        if (purchases == null || map == null) return null;
+        Integer last = null;
+        Integer lastUpgraded = null;
+        for (int id : purchases) {
+            ItemInfo info = map.get(id);
+            if (info != null && info.boots()) {
+                last = id;
+                if (info.cost() >= 900) {
+                    lastUpgraded = id;
+                }
+            }
+        }
+        return lastUpgraded != null ? lastUpgraded : last;
     }
 }

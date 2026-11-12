@@ -177,6 +177,11 @@ public class MatchIngestService {
                 String puuid = p.path("puuid").asText();
                 TimelineInfo ti = tl == null ? null : parseTimeline(tl, puuid);
                 List<Integer> itemOrder = ti == null ? null : ItemService.completedInOrder(ti.purchases(), itemMap);
+                Integer bootsItem = cls.boots();
+                if (ti != null) {
+                    Integer lastBoots = ItemService.lastBoots(ti.purchases(), itemMap);
+                    if (lastBoots != null) bootsItem = lastBoots;
+                }
 
                 db.update("INSERT INTO match_participants ("
                                 + "match_id, puuid, game_name, tag_line, team_id, champion_id, role, win, "
@@ -194,7 +199,7 @@ public class MatchIngestService {
                         p.path("totalMinionsKilled").asInt() + p.path("neutralMinionsKilled").asInt(),
                         p.path("goldEarned").asInt(), p.path("totalDamageDealtToChampions").asInt(),
                         p.path("visionScore").asInt(), p.path("champLevel").asInt(),
-                        Db.intArray(allItems), cls.boots(), Db.intArray(cls.completedItems()), Db.intArray(cls.coreItems()),
+                        Db.intArray(allItems), bootsItem, Db.intArray(cls.completedItems()), Db.intArray(cls.coreItems()),
                         p.path("summoner1Id").asInt(), p.path("summoner2Id").asInt(),
                         runes.primaryStyle(), runes.subStyle(), runes.keystone(),
                         Db.intArray(runes.primaryPerks()), Db.intArray(runes.secondaryPerks()), Db.intArray(runes.statShards()),

@@ -18,7 +18,7 @@ export default function Stage({ blobs = false, fixed = false, fade = false, edge
   // fixed: the background starts under the navbar (4.1rem), like on Home, so the navbar looks the same on every page.
   return (
       <div onMouseMove={move}
-           className={`relative isolate ${fixed ? '' : 'overflow-hidden'} ${snap ? 'snap-section' : ''} ${className}`}>
+           className={`relative isolate ${fixed ? 'pt-[4.1rem]' : 'overflow-hidden'} ${snap ? 'snap-section' : ''} ${className}`}>
         <div aria-hidden
              className={`pointer-events-none -z-10 overflow-hidden ${fixed ? 'fixed inset-x-0 bottom-0 top-[4.1rem]' : 'absolute inset-0'} ${fade ? 'fade-b' : ''}`}>
           {blobs && (

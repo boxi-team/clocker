@@ -3,13 +3,17 @@ server:
 
 spring:
   config:
-    import: optional:file:.env[.properties]
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:lol-stats-backend-java/.env[.properties]
   application:
     name: lol-stats-backend
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/lolstats}
     username: ${DB_USER:lol}
     password: ${DB_PASSWORD:lol}
+    hikari:
+      transaction-isolation: TRANSACTION_READ_COMMITTED
   flyway:
     # Existing databases created by the old Node migrate script are adopted as-is (all DDL is IF NOT EXISTS).
     baseline-on-migrate: true

@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class LolStatsApplication {
     public static void main(String[] args) {
+        System.setProperty("java.net.preferIPv4Stack", "true");
         SpringApplication.run(LolStatsApplication.class, args);
     }
 }

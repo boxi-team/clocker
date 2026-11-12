@@ -232,6 +232,15 @@ public class StatsQueries {
             m.putAll(withRate(r, games));
             bootOut.add(m);
         }
+        // Prioritize upgraded boots over basic boots (1001, 2422)
+        bootOut.sort((a, b) -> {
+            int idA = Db.i(a, "itemId");
+            int idB = Db.i(b, "itemId");
+            boolean basicA = idA == 1001 || idA == 2422;
+            boolean basicB = idB == 1001 || idB == 2422;
+            if (basicA != basicB) return basicA ? 1 : -1;
+            return Integer.compare(Db.i(b, "games"), Db.i(a, "games"));
+        });
         List<Object> itemOut = new ArrayList<>();
         for (Map<String, Object> r : items) {
             Map<String, Object> m = obj("itemId", r.get("item_id"));
@@ -336,11 +345,13 @@ public class StatsQueries {
         for (Map<String, Object> r : rows) {
             int games = Db.i(r, "games");
             int wins = Db.i(r, "wins");
+            double wr = ratio(wins, games);
+            if (wr < 0.43) continue; // Exclude champions with win rate under 43%
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("championKey", Db.i(r, "champion_id"));
             m.put("role", Db.s(r, "role"));
             m.put("games", games);
-            m.put("winRate", ratio(wins, games));
+            m.put("winRate", wr);
             m.put("pickRate", ratio(games, slots.getOrDefault(Db.s(r, "role"), 0)));
             m.put("banRate", ratio(banByChamp.getOrDefault(Db.i(r, "champion_id"), 0), total));
             m.put("score", wilsonScore(wins, games));

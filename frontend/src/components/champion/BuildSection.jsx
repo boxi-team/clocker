@@ -1,8 +1,101 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { Glass, Tile } from '../ui';
 import { EmptyState, ItemIcon, Label, LowSample, pct, num, wrColor } from './common';
 import { SHARD_NAME } from '../../lib/constants';
+
+// Completed / upgraded boots in League of Legends
+const UPGRADED_BOOTS = new Set([
+    3006, // Berserker's Greaves
+    3009, // Boots of Swiftness
+    3020, // Sorcerer's Shoes
+    3047, // Plated Steelcaps
+    3111, // Mercury's Treads
+    3117, // Mobility Boots
+    3158, // Ionian Boots of Lucidity
+    3174, // Symbiotic Soles
+    3175, // Synchronized Souls
+]);
+
+const BASIC_BOOTS = new Set([
+    1001, // Boots of Speed
+    2422, // Slightly Magical Footwear
+]);
+
+/**
+ * Resolves boots display so that:
+ * 1. The last bought / upgraded boots are always prioritized over un-upgraded boots (e.g. Magical Footwear 2422).
+ * 2. On champions (like ADCs) where boots were sold in late game, if upgraded boots exist anywhere in
+ *    timeline purchases/popular items/item slots, they are displayed instead of "no boots".
+ */
+function resolveBoots(bootsGroup, itemsList, itemSlots) {
+    const candidates = [];
+    if (bootsGroup?.recommended) candidates.push(bootsGroup.recommended);
+    if (bootsGroup?.alternatives?.length) candidates.push(...bootsGroup.alternatives);
+
+    const seenIds = new Set(candidates.map((b) => b.itemId));
+
+    // Check popular items for completed boots
+    if (itemsList?.length) {
+        for (const it of itemsList) {
+            if (UPGRADED_BOOTS.has(it.itemId) && !seenIds.has(it.itemId)) {
+                candidates.push({
+                    itemId: it.itemId,
+                    games: it.games,
+                    winRate: it.winRate,
+                    pickRate: it.pickRate ?? (it.games && bootsGroup?.sample ? it.games / bootsGroup.sample : 0),
+                });
+                seenIds.add(it.itemId);
+            }
+        }
+    }
+
+    // Check item order slots for completed boots
+    if (itemSlots?.length) {
+        for (const slot of itemSlots) {
+            const opts = slot.recommended ? [slot.recommended, ...(slot.alternatives ?? [])] : [];
+            for (const opt of opts) {
+                for (const id of (opt.itemIds ?? [])) {
+                    if (UPGRADED_BOOTS.has(id) && !seenIds.has(id)) {
+                        candidates.push({
+                            itemId: id,
+                            games: opt.games,
+                            winRate: opt.winRate,
+                            pickRate: opt.pickRate,
+                        });
+                        seenIds.add(id);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!candidates.length) return bootsGroup;
+
+    // Filter upgraded vs basic
+    const upgraded = candidates.filter((b) => UPGRADED_BOOTS.has(b.itemId));
+    const basic = candidates.filter((b) => BASIC_BOOTS.has(b.itemId));
+    const other = candidates.filter((b) => !UPGRADED_BOOTS.has(b.itemId) && !BASIC_BOOTS.has(b.itemId));
+
+    upgraded.sort((a, b) => (b.games ?? 0) - (a.games ?? 0));
+
+    if (upgraded.length > 0) {
+        const recommended = upgraded[0];
+        const alternatives = [
+            ...upgraded.slice(1),
+            ...other,
+            ...(upgraded.length === 1 ? basic : []),
+        ].slice(0, 3);
+        return { recommended, alternatives };
+    }
+
+    // Fallback: candidates sorted by games
+    candidates.sort((a, b) => (b.games ?? 0) - (a.games ?? 0));
+    return {
+        recommended: candidates[0],
+        alternatives: candidates.slice(1, 3),
+    };
+}
 
 const RateLine = ({ o }) => (
     <p className="mt-3 text-xs tabular-nums text-white/45">
@@ -128,6 +221,11 @@ const Card = ({ title, children, className = '' }) => (
 );
 
 export default function BuildSection({ build, version, assets, vs, onClearVs, loading }) {
+    const resolvedBoots = useMemo(
+        () => resolveBoots(build?.boots, build?.items, build?.itemSlots),
+        [build?.boots, build?.items, build?.itemSlots]
+    );
+
     if (!build || build.role == null || build.games === 0) {
         return (
             <>
@@ -153,7 +251,7 @@ export default function BuildSection({ build, version, assets, vs, onClearVs, lo
                     )} />
                     <div className="mt-5 border-t border-white/[0.06] pt-4">
                         <Label>Boots</Label>
-                        <OptionPicker group={build.boots} render={(o) => <ItemIcon id={o.itemId} version={version} assets={assets} className="h-11 w-11" />} />
+                        <OptionPicker group={resolvedBoots} render={(o) => <ItemIcon id={o.itemId} version={version} assets={assets} className="h-11 w-11" />} />
                     </div>
                 </Card>
                 <Card title="Final core set">

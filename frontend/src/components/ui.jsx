@@ -3,7 +3,7 @@ import { Swords, Trees, Wand2, Crosshair, HeartHandshake, Shield } from 'lucide-
 
 export const ROLE_ICONS = { Top: Swords, Jungle: Trees, Mid: Wand2, ADC: Crosshair, Support: HeartHandshake };
 
-const TIER_COLOR = {
+export const TIER_COLOR = {
     Iron: '#8b7d78', Bronze: '#b4713f', Silver: '#a9b4c0', Gold: '#e6b84c', Platinum: '#3fb8af',
     Emerald: '#2fbf71', Diamond: '#6aa9ff', Master: '#c26bff', Grandmaster: '#ff5d6c', Challenger: '#4fd8ff',
 };

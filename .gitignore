@@ -3,3 +3,7 @@ dist/
 build/
 .gradle/
 .idea/
+init-db.sql
+StandaloneCrawler.class
+.env
+*.class
