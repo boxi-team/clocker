@@ -1,6 +1,5 @@
 // Leagă frontend-ul de backend. Componentele NU se schimbă:
-// returnăm exact aceleași forme ca în data/mock.js.
-import { LIVE_GAMES } from '../data/mock';
+// returnăm exact formele pe care le așteaptă componentele.
 import { SEARCH_REGIONS } from '../lib/constants';
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 

@@ -25,8 +25,7 @@ The backend computes all statistics (win/pick/ban rates, builds, matchups, tier 
 - All filters on the champion pages live in the URL (`/champions/Ahri?tier=gold&role=mid&vs=Zed`), so links are shareable.
 - Clicking an opponent in *Matchups* shows the build against them (`?vs=`).
 - Minimal router on the History API (no extra dependency) in `hooks/useUrl.js`.
-- If the backend is down, Home and Profile fall back to mock data (development only); the champion pages show an error state with *Retry*.
-- Leaderboards and Live Game still use mock data (the backend has no endpoints for them yet).
+- If the backend is down, every page shows an error state with *Retry*; there is no mock fallback.
 
 ---
 
@@ -164,8 +163,7 @@ pages/                    Home, Profile, Champions, ChampionDetail
 components/               Navbar, Footer, Stage, MatchCard, RegionSelect, Link, ui (Glass, Tile, RankBadge, WinDonut)
 components/champion/      BuildSection, MatchupsSection, AbilitiesSection, StatsSection, SkinCarousel, common
 hooks/                    useUrl (mini router), useAsync, useRequest
-services/riotService.js   all backend calls + mock fallback
-data/mock.js              mock data (development)
+services/riotService.js   all backend calls
 lib/constants.js          tiers, roles, regions, labels
 ```
 
