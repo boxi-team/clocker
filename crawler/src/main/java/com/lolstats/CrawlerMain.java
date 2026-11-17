@@ -15,10 +15,14 @@ package com.lolstats;/*
  *    java -cp ".;C:\Users\Domsa\.gradle\caches\modules-2\files-2.1\org.postgresql\postgresql\42.7.8\*\postgresql-42.7.8.jar;C:\Users\Domsa\.gradle\caches\modules-2\files-2.1\com.fasterxml.jackson.core\jackson-databind\2.19.2\*\jackson-databind-2.19.2.jar;C:\Users\Domsa\.gradle\caches\modules-2\files-2.1\com.fasterxml.jackson.core\jackson-core\2.19.2\*\jackson-core-2.19.2.jar;C:\Users\Domsa\.gradle\caches\modules-2\files-2.1\com.fasterxml.jackson.core\jackson-annotations\2.19.2\*\jackson-annotations-2.19.2.jar" CrawlerMain
  *
  *  VARIABILE DE MEDIU (sau le hardcodezi mai jos):
- *    DB_URL        jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
- *    DB_USER       postgres.wjqdujmrxxthmzkbailf
- *    DB_PASSWORD   TutTypescriptGod123
+ *    DB_URL        jdbc:postgresql://<HOST>:6543/postgres?sslmode=require&prepareThreshold=0
+ *    DB_USER       <user>
+ *    DB_PASSWORD   <password>
  *    RIOT_API_KEY  RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ *    CRAWL_QUOTAS  eun1:250,euw1:250,na1:200,kr:200,oc1:100  (meciuri pe tier, pe platformă)
+ *
+ *  THREAD-URI: câte unul pe fiecare host regional (europe, americas, asia, sea).
+ *  Riot limitează separat fiecare host, deci thread-urile nu se încurcă între ele.
  * ============================================================================
  */
 
@@ -33,6 +37,11 @@ import java.sql.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -44,12 +53,16 @@ public class CrawlerMain {
     static String DB_PASSWORD   = env("DB_PASSWORD", "");
     static String RIOT_API_KEY  = env("RIOT_API_KEY","");
     static String PATCH_LATEST  = env("PATCH_LATEST","16.22");
-    static String REGION        = env("CRAWL_REGION", "eun1");
+    // Meciuri pe tier, pe platformă. Suma = totalul pe tier (1000).
+    static String QUOTAS        = env("CRAWL_QUOTAS", "eun1:250,euw1:250,na1:200,kr:200,oc1:100");
 
-    static int     TARGET_MATCHES        = Integer.parseInt(env("CRAWL_TARGET", "1000"));
-    static int     PAGES_PER_TIER        = Integer.parseInt(env("CRAWL_PAGES", "10"));
+    static int     PAGES_PER_DIVISION    = Integer.parseInt(env("CRAWL_PAGES", "2"));
     static int     MATCHES_PER_PLAYER    = Integer.parseInt(env("CRAWL_MATCHES_PER_PLAYER", "10"));
     static double  TIMELINE_SAMPLE_RATE  = Double.parseDouble(env("TIMELINE_SAMPLE_RATE", "0.25"));
+    // shortcut: fereastra implicită e 14 zile (cât ține un patch), nu data reală a patch-ului;
+    // setează CRAWL_START_TIME (epoch secunde) dacă vrei exact începutul patch-ului.
+    static long    START_TIME            = Long.parseLong(env("CRAWL_START_TIME",
+            String.valueOf(Instant.now().minus(Duration.ofDays(14)).getEpochSecond())));
 
     // Tier-uri de crawlat (toate by default). Pune doar ce vrei, ex: List.of("silver","gold")
     static List<String> TIERS = List.of(
@@ -57,6 +70,7 @@ public class CrawlerMain {
             "master","grandmaster","challenger");
 
     static final Set<String> APEX = Set.of("master","grandmaster","challenger");
+    static final String[] DIVISIONS = {"I", "II", "III", "IV"};
 
     // Rate limits Riot (dev key defaults)
     static final int[][] RATE_LIMITS = {{20, 1000}, {100, 120_000}};
@@ -75,101 +89,163 @@ public class CrawlerMain {
             System.exit(1);
         }
 
+        Map<String, Integer> quotas = parseQuotas(QUOTAS);
+        // Grupează platformele pe host regional: un thread per host (europe, americas, asia, sea).
+        Map<String, List<String>> byRoute = new LinkedHashMap<>();
+        for (String platform : quotas.keySet()) {
+            String route = ROUTING.get(platform);
+            if (route == null) throw new IllegalArgumentException("Regiune necunoscută în CRAWL_QUOTAS: " + platform);
+            byRoute.computeIfAbsent(route, r -> new ArrayList<>()).add(platform);
+        }
+
         log("🚀 Pornire Standalone Crawler");
-        log("   Regiune: %s | Țintă: %d meciuri/tier | Tiers: %s", REGION, TARGET_MATCHES, TIERS);
+        log("   Cote/tier: %s | Thread-uri: %s | Tiers: %s", quotas, byRoute, TIERS);
         log("   DB: %s", DB_URL.replaceAll("password=[^&]*", "password=***"));
 
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
-            conn.setAutoCommit(false);
+        // Pre-load item data pentru clasificare (citit doar, deci se poate împărți între thread-uri)
+        Map<Integer, ItemInfo> itemMap;
+        try (Connection conn = connect()) {
             log("✅ Conectat la baza de date");
-
-            // Pre-load item data pentru clasificare
-            Map<Integer, ItemInfo> itemMap = loadItems(conn);
-            log("📦 Încărcate %d item-uri din DB", itemMap.size());
-
-            for (String tier : TIERS) {
-                log("════════════════════════════════════════════════════");
-                log("🎯 START tier [%s]", tier.toUpperCase());
-                log("════════════════════════════════════════════════════");
-
-                crawlTier(conn, tier, itemMap);
-            }
-
-            log("════════════════════════════════════════════════════");
-            log("🏁 TOATE TIER-URILE FINALIZATE!");
-            log("════════════════════════════════════════════════════");
+            itemMap = loadItems(conn);
         }
+        log("📦 Încărcate %d item-uri din DB", itemMap.size());
+
+        ExecutorService pool = Executors.newFixedThreadPool(byRoute.size());
+        Map<String, Future<?>> jobs = new LinkedHashMap<>();
+        for (var e : byRoute.entrySet()) {
+            jobs.put(e.getKey(), pool.submit(() -> { crawlRoute(e.getKey(), e.getValue(), quotas, itemMap); return null; }));
+        }
+        pool.shutdown();
+
+        // Un thread căzut nu le oprește pe celelalte.
+        int failed = 0;
+        for (var j : jobs.entrySet()) {
+            try {
+                j.getValue().get();
+            } catch (ExecutionException e) {
+                failed++;
+                log("❌ [%s] thread oprit: %s", j.getKey(), e.getCause());
+            }
+        }
+
+        log("════════════════════════════════════════════════════");
+        log(failed == 0 ? "🏁 TOATE TIER-URILE FINALIZATE!" : "⚠ Terminat, dar %d thread-uri au căzut", failed);
+        log("════════════════════════════════════════════════════");
+    }
+
+    static Connection connect() throws SQLException {
+        Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+        conn.setAutoCommit(false);
+        return conn;
+    }
+
+    /** "eun1:250,euw1:250" -> {eun1=250, euw1=250}, în ordinea dată. */
+    static Map<String, Integer> parseQuotas(String spec) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (String part : spec.split(",")) {
+            if (part.isBlank()) continue;
+            String[] kv = part.trim().split(":");
+            if (kv.length != 2) throw new IllegalArgumentException("CRAWL_QUOTAS invalid: '" + part + "' (format: eun1:250)");
+            out.put(kv[0].trim().toLowerCase(), Integer.parseInt(kv[1].trim()));
+        }
+        if (out.isEmpty()) throw new IllegalArgumentException("CRAWL_QUOTAS e gol");
+        return out;
+    }
+
+    /** Partea diviziei d (0..3) din cotă: împărțire egală, restul merge la primele diviziuni. */
+    static int divisionShare(int quota, int d) {
+        return quota / DIVISIONS.length + (d < quota % DIVISIONS.length ? 1 : 0);
     }
 
     // =====================================================================
     //  CRAWL LOGIC
     // =====================================================================
-    static void crawlTier(Connection conn, String tier, Map<Integer, ItemInfo> itemMap) throws Exception {
-        List<JsonNode> entries = new ArrayList<>();
+    /** Un thread: toate tier-urile, pentru platformele unui host regional. Conexiune DB proprie. */
+    static void crawlRoute(String route, List<String> platforms, Map<String, Integer> quotas,
+                           Map<Integer, ItemInfo> itemMap) throws Exception {
+        try (Connection conn = connect()) {
+            for (String tier : TIERS) {
+                for (String platform : platforms) {
+                    log("🎯 [%s] START %s/%s (cotă %d)", route, platform.toUpperCase(), tier.toUpperCase(), quotas.get(platform));
+                    crawlTier(conn, platform, tier, quotas.get(platform), itemMap);
+                }
+            }
+            log("🏁 [%s] thread terminat", route);
+        }
+    }
+
+    static class Stats { int stored, existing, skipped, players; }
+
+    static void crawlTier(Connection conn, String platform, String tier, int quota,
+                          Map<Integer, ItemInfo> itemMap) throws Exception {
+        String tag = platform.toUpperCase() + "/" + tier.toUpperCase();
+        Stats st = new Stats();
 
         if (APEX.contains(tier)) {
-            JsonNode resp = riotGet(REGION,
+            JsonNode resp = riotGet(platform,
                     "/lol/league/v4/" + tier + "leagues/by-queue/RANKED_SOLO_5x5");
-            resp.path("entries").forEach(entries::add);
+            crawlEntries(conn, platform, tier, resp.path("entries"), quota, itemMap, st, tag);
         } else {
-            for (int page = 1; page <= PAGES_PER_TIER; page++) {
-                JsonNode batch = riotGet(REGION,
-                        "/lol/league/v4/entries/RANKED_SOLO_5x5/" + tier.toUpperCase() + "/I",
-                        Map.of("page", page));
-                if (batch.size() == 0) break;
-                batch.forEach(entries::add);
+            // Aceeași cotă pe fiecare diviziune (I..IV), ca statisticile să nu fie trase spre Gold I.
+            for (int d = 0; d < DIVISIONS.length; d++) {
+                int goal = st.stored + divisionShare(quota, d);
+                for (int page = 1; page <= PAGES_PER_DIVISION && st.stored < goal; page++) {
+                    JsonNode batch = riotGet(platform,
+                            "/lol/league/v4/entries/RANKED_SOLO_5x5/" + tier.toUpperCase() + "/" + DIVISIONS[d],
+                            Map.of("page", page));
+                    if (batch.size() == 0) break;
+                    crawlEntries(conn, platform, tier, batch, goal, itemMap, st, tag + " " + DIVISIONS[d]);
+                }
             }
         }
 
-        log("[%s] Găsiți %d jucători pe ladder", tier.toUpperCase(), entries.size());
+        log("[%s] ✅ FINALIZAT: Jucători=%d, Salvate=%d/%d, Existente=%d, Ignorate=%d",
+                tag, st.players, st.stored, quota, st.existing, st.skipped);
+    }
 
-        int stored = 0, existing = 0, skipped = 0, players = 0;
+    /** Ia meciurile jucătorilor din {@code entries} până când st.stored ajunge la {@code goal}. */
+    static void crawlEntries(Connection conn, String platform, String tier, JsonNode entries, int goal,
+                             Map<Integer, ItemInfo> itemMap, Stats st, String tag) throws Exception {
+        String route = ROUTING.get(platform);
+        int i = 0;
+        for (JsonNode entry : entries) {
+            if (st.stored >= goal) return;
+            i++;
 
-        for (int i = 0; i < entries.size(); i++) {
-            if (TARGET_MATCHES > 0 && stored >= TARGET_MATCHES) break;
-
-            JsonNode entry = entries.get(i);
-            String puuid = puuidOf(entry);
+            String puuid = puuidOf(platform, entry);
             if (puuid == null) continue;
 
             try {
-                String route = ROUTING.get(REGION);
                 JsonNode matchIds = riotGet(route,
                         "/lol/match/v5/matches/by-puuid/" + enc(puuid) + "/ids",
-                        Map.of("queue", 420, "count", MATCHES_PER_PLAYER));
+                        Map.of("queue", 420, "count", MATCHES_PER_PLAYER, "startTime", START_TIME));
 
                 for (JsonNode idNode : matchIds) {
-                    if (TARGET_MATCHES > 0 && stored >= TARGET_MATCHES) break;
-                    String matchId = idNode.asText();
-
-                    int result = ingestMatch(conn, matchId, tier, itemMap);
-                    switch (result) {
-                        case 1 -> stored++;
-                        case 0 -> existing++;
-                        case -1 -> skipped++;
+                    if (st.stored >= goal) break;
+                    switch (ingestMatch(conn, platform, idNode.asText(), tier, itemMap)) {
+                        case 1 -> st.stored++;
+                        case 0 -> st.existing++;
+                        case -1 -> st.skipped++;
                     }
                 }
-                players++;
+                st.players++;
             } catch (RiotException e) {
                 if (e.status == 404) continue; // jucător nu mai există
                 throw e;
             }
 
-            if ((i + 1) % 10 == 0 || i == entries.size() - 1) {
-                log("[%s] Progres: %d/%d jucători | Salvate: %d | Existente: %d | Ignorate: %d",
-                        tier.toUpperCase(), i + 1, entries.size(), stored, existing, skipped);
+            if (i % 10 == 0) {
+                log("[%s] Progres: %d jucători | Salvate: %d/%d | Existente: %d | Ignorate: %d",
+                        tag, i, st.stored, goal, st.existing, st.skipped);
             }
         }
-
-        log("[%s] ✅ FINALIZAT: Jucători=%d, Salvate=%d, Existente=%d, Ignorate=%d",
-                tier.toUpperCase(), players, stored, existing, skipped);
     }
 
-    static String puuidOf(JsonNode entry) throws Exception {
+    static String puuidOf(String platform, JsonNode entry) throws Exception {
         if (entry.hasNonNull("puuid")) return entry.path("puuid").asText();
         if (!entry.hasNonNull("summonerId")) return null;
         try {
-            JsonNode summoner = riotGet(REGION,
+            JsonNode summoner = riotGet(platform,
                     "/lol/summoner/v4/summoners/" + enc(entry.path("summonerId").asText()));
             return summoner.path("puuid").asText();
         } catch (RiotException e) {
@@ -188,7 +264,7 @@ public class CrawlerMain {
     static final Set<Integer> RANKED_QUEUES = Set.of(420, 440);
 
     /** @return 1=stored, 0=exists, -1=skipped */
-    static int ingestMatch(Connection conn, String matchId, String tierBucket,
+    static int ingestMatch(Connection conn, String platform, String matchId, String tierBucket,
                            Map<Integer, ItemInfo> itemMap) throws Exception {
         // Deja există?
         try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM matches WHERE match_id = ?")) {
@@ -196,7 +272,7 @@ public class CrawlerMain {
             if (ps.executeQuery().next()) return 0;
         }
 
-        String route = ROUTING.get(REGION);
+        String route = ROUTING.get(platform);
         JsonNode m = riotGet(route, "/lol/match/v5/matches/" + enc(matchId));
         JsonNode info = m.path("info");
 
@@ -210,7 +286,7 @@ public class CrawlerMain {
         String gameVersion = info.path("gameVersion").asText();
         String patch = patchOf(gameVersion);
 
-        if(patch != PATCH_LATEST) {
+        if (!patch.equals(PATCH_LATEST)) {
             // if patch is not latest, skip match
             return -1;
         }
@@ -237,7 +313,7 @@ public class CrawlerMain {
                         + "game_duration, winning_team, tier_bucket) VALUES (?,?,?,?,?,?,?,?,?) "
                         + "ON CONFLICT (match_id) DO NOTHING")) {
             ps.setString(1, matchId);
-            ps.setString(2, REGION);
+            ps.setString(2, platform);
             ps.setInt(3, queueId);
             ps.setString(4, patch);
             ps.setString(5, gameVersion);
@@ -305,7 +381,7 @@ public class CrawlerMain {
                 ps.setString(32, ti == null ? null : intArray(ti.itemOrder));
                 ps.setString(33, patch);
                 ps.setInt(34, queueId);
-                ps.setString(35, REGION);
+                ps.setString(35, platform);
                 ps.setString(36, tierBucket);
                 ps.setLong(37, gameCreation);
                 ps.setInt(38, gameDuration);
@@ -495,7 +571,8 @@ public class CrawlerMain {
     // =====================================================================
     static final ObjectMapper OM = new ObjectMapper();
     static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    static final Map<String, SlidingLimiter> LIMITERS = new HashMap<>();
+    // Concurrent: thread-urile creează limiter-ele în paralel. Unul per host, deci fiecare thread are propriile limite.
+    static final Map<String, SlidingLimiter> LIMITERS = new ConcurrentHashMap<>();
 
     static final Map<String, String> ROUTING = Map.ofEntries(
             Map.entry("na1","americas"), Map.entry("br1","americas"), Map.entry("la1","americas"), Map.entry("la2","americas"),
@@ -639,9 +716,11 @@ public class CrawlerMain {
                     case "DB_USER" -> DB_USER = val;
                     case "DB_PASSWORD" -> DB_PASSWORD = val;
                     case "RIOT_API_KEY" -> RIOT_API_KEY = val;
-                    case "CRAWL_REGION" -> REGION = val;
-                    case "CRAWL_TARGET" -> TARGET_MATCHES = Integer.parseInt(val);
-                    case "CRAWL_PAGES" -> PAGES_PER_TIER = Integer.parseInt(val);
+                    case "PATCH_LATEST" -> PATCH_LATEST = val;
+                    case "CRAWL_QUOTAS" -> QUOTAS = val;
+                    case "CRAWL_PAGES" -> PAGES_PER_DIVISION = Integer.parseInt(val);
+                    case "CRAWL_MATCHES_PER_PLAYER" -> MATCHES_PER_PLAYER = Integer.parseInt(val);
+                    case "CRAWL_START_TIME" -> START_TIME = Long.parseLong(val);
                     case "TIMELINE_SAMPLE_RATE" -> TIMELINE_SAMPLE_RATE = Double.parseDouble(val);
                 }
             }
