@@ -13,3 +13,6 @@ StandaloneCrawler.class
 
 .env
 *.class
+
+graphify-out/
+.bug-fix-backup-20261117/

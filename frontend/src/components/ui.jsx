@@ -16,9 +16,9 @@ export const Glass = ({ className = '', children, ...p }) => (
 
 // Imagine reală dacă există `src`; altfel (sau dacă nu se încarcă) placeholder cu inițiale.
 export function Tile({ label = '?', src, className = 'w-11 h-11' }) {
-    const [broken, setBroken] = useState(false);
-    if (src && !broken) {
-        return <img src={src} alt={label} title={label} loading="lazy" onError={() => setBroken(true)}
+    const [brokenSrc, setBrokenSrc] = useState(null);
+    if (src && brokenSrc !== src) {
+        return <img src={src} alt={label} title={label} loading="lazy" onError={() => setBrokenSrc(src)}
                     className={`${className} shrink-0 rounded-lg border border-white/15 object-cover`} />;
     }
     const hue = [...label].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;

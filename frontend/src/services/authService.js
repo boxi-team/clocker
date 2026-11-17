@@ -126,7 +126,7 @@ export const authService = {
 
     // 4. Standard Email/Password Login & Register (Real Backend API calls)
     async loginWithEmail({ email, password }) {
-        if (!email || !password) throw new Error('Email-ul și parola sunt obligatorii.');
+        if (!email || !password) throw new Error('Email and password are required.');
 
         let res;
         try {
@@ -136,12 +136,17 @@ export const authService = {
                 body: JSON.stringify({ email: email.trim(), password }),
             });
         } catch {
-            throw new Error('Nu se poate comunica cu backend-ul (port 3000). Asigură-te că serverul Java rulează.');
+            throw new Error('Could not connect to backend (port 3000). Make sure the backend server is running.');
         }
 
         const body = await res.json().catch(() => ({}));
+        // Unverified account: the Auth page switches to the code screen instead of showing an error.
+        const code = body.error?.code ?? body.data?.status;
+        if (code === 'EMAIL_NOT_VERIFIED' || code === 'NEEDS_VERIFICATION') {
+            return { status: 'NEEDS_VERIFICATION' };
+        }
         if (!res.ok) {
-            throw new Error(body.error?.message || 'Email sau parolă incorectă.');
+            throw new Error(body.error?.message || 'Invalid email or password.');
         }
 
         const user = body.data?.user || body.data;
@@ -153,8 +158,8 @@ export const authService = {
     },
 
     async registerWithEmail({ username, email, password, riotId = null, region = 'EUW' }) {
-        if (!email || !password) throw new Error('Email-ul și parola sunt obligatorii.');
-        if (password.length < 6) throw new Error('Parola trebuie să aibă cel puțin 6 caractere.');
+        if (!email || !password) throw new Error('Email and password are required.');
+        if (password.length < 6) throw new Error('Password must be at least 6 characters.');
 
         let res;
         try {
@@ -170,12 +175,12 @@ export const authService = {
                 }),
             });
         } catch {
-            throw new Error('Nu se poate comunica cu backend-ul (port 3000). Endpoint-ul POST /v1/auth/register trebuie implementat în Java.');
+            throw new Error('Could not connect to backend (port 3000). The endpoint POST /v1/auth/register must be implemented in Java.');
         }
 
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-            throw new Error(body.error?.message || 'Eroare la crearea contului în backend.');
+            throw new Error(body.error?.message || 'Error creating account on backend.');
         }
 
         return {
@@ -186,7 +191,7 @@ export const authService = {
     },
 
     async verifyEmailAndLogin({ email, code }) {
-        if (!email || !code) throw new Error('Email-ul și codul sunt obligatorii.');
+        if (!email || !code) throw new Error('Email and code are required.');
 
         let res;
         try {
@@ -196,12 +201,12 @@ export const authService = {
                 body: JSON.stringify({ email: email.trim(), code: String(code).trim() }),
             });
         } catch {
-            throw new Error('Nu se poate comunica cu backend-ul (port 3000). Endpoint-ul POST /v1/auth/verify-email trebuie implementat în Java.');
+            throw new Error('Could not connect to backend (port 3000). The endpoint POST /v1/auth/verify-email must be implemented in Java.');
         }
 
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-            throw new Error(body.error?.message || 'Codul de verificare este invalid sau a expirat.');
+            throw new Error(body.error?.message || 'Verification code is invalid or has expired.');
         }
 
         const user = body.data?.user || body.data;
@@ -221,12 +226,12 @@ export const authService = {
                 body: JSON.stringify({ email: email.trim() }),
             });
         } catch {
-            throw new Error('Nu se poate comunica cu backend-ul (port 3000). Endpoint-ul POST /v1/auth/resend-code trebuie implementat în Java.');
+            throw new Error('Could not connect to backend (port 3000). The endpoint POST /v1/auth/resend-code must be implemented in Java.');
         }
 
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-            throw new Error(body.error?.message || 'Eroare la retrimiterea codului din backend.');
+            throw new Error(body.error?.message || 'Error resending verification code.');
         }
 
         return body.data;

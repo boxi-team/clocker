@@ -42,7 +42,7 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
         e.preventDefault();
         setError('');
         if (!email.trim() || !email.includes('@')) {
-            setError('Introdu o adresă validă de email Google / Gmail.');
+            setError('Please enter a valid Google / Gmail address.');
             return;
         }
         setStep('loading');
@@ -80,20 +80,20 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                         <button
                             onClick={onClose}
                             className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
-                            title="Închide"
+                            title="Close"
                         >
                             ✕
                         </button>
                     </div>
 
-                    {/* STEP 1: CONECTARE CU GOOGLE */}
+                    {/* STEP 1: SIGN IN WITH GOOGLE */}
                     {step === 'input' && (
                         <div className="mt-5">
                             <h2 className="text-[22px] font-normal tracking-tight text-[#1f1f1f]">
-                                Conectați-vă cu Google
+                                Sign in with Google
                             </h2>
                             <p className="mt-1 text-sm text-[#444746]">
-                                pentru a continua pe <strong className="font-semibold text-[#1f1f1f]">boxi.gg</strong>
+                                to continue to <strong className="font-semibold text-[#1f1f1f]">boxi.gg</strong>
                             </p>
 
                             {error && (
@@ -105,13 +105,13 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                             <form onSubmit={handleGoogleSubmit} className="mt-6 space-y-4">
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                                        E-mail Google / Gmail
+                                        Google / Gmail address
                                     </label>
                                     <input
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="nume@gmail.com"
+                                        placeholder="yourname@gmail.com"
                                         className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-blue-100"
                                         required
                                         autoFocus
@@ -120,13 +120,13 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
 
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                                        Nume afișat (opțional)
+                                        Display Name (optional)
                                     </label>
                                     <input
                                         type="text"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
-                                        placeholder="ex: Alex"
+                                        placeholder="e.g. Alex"
                                         className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-blue-100"
                                     />
                                 </div>
@@ -137,19 +137,19 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                                         onClick={onClose}
                                         className="text-xs font-semibold text-gray-500 hover:text-gray-800"
                                     >
-                                        Anulează
+                                        Cancel
                                     </button>
                                     <button
                                         type="submit"
                                         className="rounded-full bg-[#1a73e8] px-6 py-2.5 text-sm font-semibold text-white shadow hover:bg-blue-600 active:scale-95 transition"
                                     >
-                                        Înainte
+                                        Next
                                     </button>
                                 </div>
                             </form>
 
                             <p className="mt-6 text-[11px] leading-relaxed text-[#5f6368]">
-                                Pentru a continua, Google va permite accesul la adresa de e-mail și fotografia de profil pentru boxi.gg.
+                                To continue, Google will share your name, email address, and profile picture with boxi.gg.
                             </p>
                         </div>
                     )}
@@ -164,10 +164,10 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                             </div>
 
                             <h2 className="text-[20px] font-normal tracking-tight text-[#1f1f1f]">
-                                Asociază contul tău Riot Games
+                                Link your Riot Games Account
                             </h2>
                             <p className="mt-1 text-xs text-[#5f6368]">
-                                Introdu Riot ID-ul tău pentru a-ți încărca statisticile și istoricul de meciuri.
+                                Enter your Riot ID to load your live stats and match history.
                             </p>
 
                             <div className="mt-5 space-y-4">
@@ -180,7 +180,7 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                                             type="text"
                                             value={riotId}
                                             onChange={(e) => setRiotId(e.target.value)}
-                                            placeholder="Nume#TAG"
+                                            placeholder="Name#TAG"
                                             className="w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
                                             autoFocus
                                         />
@@ -194,7 +194,7 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                                         onClick={() => handleComplete(true)}
                                         className="text-xs font-semibold text-gray-500 hover:text-gray-800"
                                     >
-                                        Sari peste (asociază mai târziu)
+                                        Skip (link later)
                                     </button>
 
                                     <button
@@ -202,7 +202,7 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                                         onClick={() => handleComplete(false)}
                                         className="rounded-full bg-[#1a73e8] px-6 py-2.5 text-sm font-semibold text-white shadow hover:bg-blue-600 active:scale-95 transition"
                                     >
-                                        Conectare & Profil
+                                        Sign In & Go to Profile
                                     </button>
                                 </div>
                             </div>
@@ -213,7 +213,7 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                     {step === 'loading' && (
                         <div className="py-12 text-center">
                             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-[#1a73e8]" />
-                            <p className="mt-4 text-xs font-medium text-gray-500">Se procesează...</p>
+                            <p className="mt-4 text-xs font-medium text-gray-500">Processing...</p>
                         </div>
                     )}
                 </div>
@@ -222,8 +222,8 @@ export default function GoogleAccountChooser({ onSelectAccount, onClose }) {
                 <div className="border-t border-gray-100 bg-[#f8fafd] px-7 py-3 text-[11px] text-[#5f6368] flex items-center justify-between">
                     <span>Google Identity</span>
                     <div className="flex items-center gap-3">
-                        <span>Confidențialitate</span>
-                        <span>Termeni</span>
+                        <span>Privacy</span>
+                        <span>Terms</span>
                     </div>
                 </div>
             </div>

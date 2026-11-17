@@ -40,11 +40,14 @@ export function useAuth() {
         return u;
     }, []);
 
-    const loginWithEmail = useCallback((params) => {
-        const u = authService.loginWithEmail(params);
-        setUser(u);
-        setActiveSummoner(u.riotAccount);
-        return u;
+    // Returns { status, user }. State is set only after a successful login.
+    const loginWithEmail = useCallback(async (params) => {
+        const res = await authService.loginWithEmail(params);
+        if (res?.user) {
+            setUser(res.user);
+            setActiveSummoner(res.user.riotAccount ?? null);
+        }
+        return res;
     }, []);
 
     const registerWithEmail = useCallback(async (params) => {
@@ -52,10 +55,10 @@ export function useAuth() {
         return res;
     }, []);
 
-    const verifyEmailAndLogin = useCallback((params) => {
-        const u = authService.verifyEmailAndLogin(params);
+    const verifyEmailAndLogin = useCallback(async (params) => {
+        const u = await authService.verifyEmailAndLogin(params);
         setUser(u);
-        setActiveSummoner(u.riotAccount);
+        setActiveSummoner(u?.riotAccount ?? null);
         return u;
     }, []);
 

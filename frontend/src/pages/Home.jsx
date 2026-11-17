@@ -5,8 +5,8 @@ import Link from '../components/Link';
 import RoleIcon from '../components/RoleIcon';
 import { Glass, Tile } from '../components/ui';
 import { EmptyState, ErrorState, pct } from '../components/champion/common';
-import { SEARCH_REGIONS } from '../lib/constants';
-import { getMetaSnapshot, getMostBanned, getTopPlayers, getSummoner, getMatchHistory } from '../services/riotService';
+import { SEARCH_REGIONS, LEADERBOARD_REGIONS } from '../lib/constants';
+import { getMetaSnapshot, getMostBanned, getTopPlayers, getSummoner, getMatchHistory, META_MIN_GAMES } from '../services/riotService';
 import { useAsync } from '../hooks/useAsync';
 import { useRequest } from '../hooks/useRequest';
 import Stage from '../components/Stage';
@@ -48,7 +48,7 @@ function MetaSnapshot({ meta }) {
             </div>
             {error ? <ErrorState error={error} onRetry={retry} />
                 : !data ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4"><CardSkeletons n={8} /></div>
-                    : data.length === 0 ? <EmptyState>No ranked matches indexed yet. Stats appear here once matches are imported.</EmptyState>
+                    : data.length === 0 ? <EmptyState>Not enough data yet. A champion appears here once it has at least {META_MIN_GAMES} games in a role (all ranks).</EmptyState>
                         : (
                             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                                 {data.map((m, i) => (
@@ -177,7 +177,7 @@ const PODIUM = ['text-amber-300', 'text-slate-300', 'text-orange-400'];
 function PlayersPanel({ region, onSearch }) {
     const players = useRequest(() => getTopPlayers(region, 10), [region]);
     return (
-        <Panel title={`Top 10 · ${region}`} icon={Trophy} linkLabel="See the full leaderboard" href={`/leaderboard?region=${region}`}>
+        <Panel title={`Top 10 · ${region}`} icon={Trophy} linkLabel="See the full leaderboard" href={LEADERBOARD_REGIONS.includes(region) ? `/leaderboard?region=${region}` : '/leaderboard'}>
             <PanelState req={players} n={10} empty="No ranked players found yet.">
                 {players.data?.map((p, i) => (
                     <button key={p.puuid} onClick={() => onSearch(`${p.name}#${p.tag}`, region)}
@@ -288,7 +288,7 @@ export default function Home({ onSearch, summoner }) {
         visits += 1;
         localStorage.setItem('homeVisitCount', visits.toString());
 
-        if (visits % 10 === -1) return { type: 'keria' };
+        if (visits % 10 === 0) return { type: 'keria' };
 
         // PENTRU TESTARE AUTOFILL GOD DECOMENTEAZĂ LINIA URMĂTOARE:
         //return { type: 'diff' };
@@ -301,15 +301,20 @@ export default function Home({ onSearch, summoner }) {
     const isShowingDiff = choice.type === 'diff';
     const phraseIdx = choice.idx || 0;
 
+    // { failed: true } when the profile could not load, so the "Diff" title does not wait forever.
     const p = useAsync(
-        () => summoner ? getSummoner(summoner.name, summoner.region).catch(() => null) : Promise.resolve(null),
-        [summoner]
+        () => summoner ? getSummoner(summoner.name, summoner.region).catch(() => ({ failed: true })) : Promise.resolve(null),
+        [summoner?.name, summoner?.region]
     );
 
-    const matches = useAsync(
-        () => p?.puuid ? getMatchHistory(p.puuid).catch(() => []) : Promise.resolve([]),
+    // Tagged with the puuid so a stale list from the previous player is never used.
+    const matchesRes = useAsync(
+        () => p?.puuid
+            ? getMatchHistory(p.puuid).catch(() => []).then((list) => ({ puuid: p.puuid, list }))
+            : Promise.resolve(null),
         [p?.puuid]
     );
+    const matches = p?.puuid && matchesRes?.puuid === p.puuid ? matchesRes.list : null;
 
     const [roleDiff, setRoleDiff] = useState('');
     const [isSpecialPlayer, setIsSpecialPlayer] = useState(false);
@@ -361,7 +366,8 @@ export default function Home({ onSearch, summoner }) {
                     setRoleDiff('Player Diff.');
                 }
             }
-        } else if (summoner === null) {
+        } else if (!summoner || p?.failed || matches) {
+            // No summoner, profile failed, or 0 matches: random role instead of an empty title
             setRoleDiff(`${ROLES[Math.floor(Math.random() * ROLES.length)]} Diff.`);
         }
     }, [matches, p, summoner, isShowingDiff]);

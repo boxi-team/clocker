@@ -6,7 +6,7 @@ import { useAsync } from '../hooks/useAsync';
 import { getMatchDetail } from '../services/riotService';
 
 const kdaRatio = (k, d, a) => (d === 0 ? 'Perfect' : ((k + a) / d).toFixed(2));
-const csPerMin = (cs, mins) => (cs / mins).toFixed(1);
+const csPerMin = (cs, mins) => (mins > 0 ? cs / mins : 0).toFixed(1);
 const ico = (x) => (typeof x === 'string' ? { name: x } : x); // string (mock) sau { name, img }
 
 // Fixed column widths: header labels and rows share them, so the table never changes size.

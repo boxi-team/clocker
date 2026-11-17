@@ -4,7 +4,7 @@ import { Glass, Tile, RankBadge, WinDonut } from '../components/ui';
 import RoleIcon from '../components/RoleIcon';
 import MatchCard from '../components/MatchCard';
 import RegionSelect from '../components/RegionSelect';
-import { Label, pct, num, wrColor } from '../components/champion/common';
+import { Label, ErrorState, pct, num, wrColor } from '../components/champion/common';
 import { useRequest } from '../hooks/useRequest';
 import { useAuth } from '../hooks/useAuth';
 import { getSummoner, getMatchHistory, getMatchesStatus, refreshPlayer } from '../services/riotService';
@@ -46,7 +46,7 @@ function Sidebar({ p, isOwnProfile, onOpenLinkModal, onLogout, user }) {
     return (
         <Glass className="flex flex-col overflow-hidden lg:h-full">
             <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {/* Header profil */}
+                {/* Profile Header */}
                 <div className="flex flex-col items-center gap-3 p-6 pb-4">
                     <div className="relative">
                         <div className="rounded-full bg-gradient-to-br from-accent to-violet p-[2.5px] shadow-[0_0_25px_rgba(94,225,255,0.25)]">
@@ -73,7 +73,7 @@ function Sidebar({ p, isOwnProfile, onOpenLinkModal, onLogout, user }) {
                             <div className="mt-2 flex flex-col items-center gap-1.5">
                                 <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/15 px-3 py-0.5 text-[11px] font-semibold text-accent shadow-[0_0_15px_rgba(94,225,255,0.2)]">
                                     <Sparkles size={11} />
-                                    <span>Contul tău conectat</span>
+                                    <span>Connected Account</span>
                                 </span>
                                 {user?.email && (
                                     <span className="text-[10px] text-white/40">{user.email}</span>
@@ -92,15 +92,15 @@ function Sidebar({ p, isOwnProfile, onOpenLinkModal, onLogout, user }) {
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] py-1.5 text-xs font-semibold text-white/80 transition hover:border-accent/40 hover:bg-white/[0.08] hover:text-white"
                             >
                                 <Link2 size={13} className="text-accent" />
-                                <span>Schimbă Riot ID</span>
+                                <span>Change Riot ID</span>
                             </button>
                             <button
                                 onClick={onLogout}
                                 className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
-                                title="Deconectează contul"
+                                title="Sign out"
                             >
                                 <LogOut size={13} />
-                                <span className="hidden sm:inline">Ieșire</span>
+                                <span className="hidden sm:inline">Log Out</span>
                             </button>
                         </div>
                     )}
@@ -111,14 +111,14 @@ function Sidebar({ p, isOwnProfile, onOpenLinkModal, onLogout, user }) {
                     <RankBlock title="Ranked Flex" r={p.ranks.flex} />
 
                     <div className="py-5">
-                        <Label>Top Campioni</Label>
+                        <Label>Top Champions</Label>
                         <div className="space-y-1.5 mt-2">
                             {p.topChamps.map((c) => (
                                 <div key={c.champ} className="-mx-2 flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm transition hover:bg-white/[0.04]">
                                     <Tile label={c.champ} src={c.img} className="h-10 w-10 !rounded-lg" />
                                     <div className="min-w-0 flex-1">
                                         <p className="font-semibold text-white leading-tight">{c.champ}</p>
-                                        <p className="text-xs text-white/40">{c.games} jocuri</p>
+                                        <p className="text-xs text-white/40">{c.games} games</p>
                                     </div>
                                     <div className="text-right">
                                         <p className="font-semibold tabular-nums text-white leading-tight">{c.kda} KDA</p>
@@ -151,7 +151,7 @@ function Performance({ matches }) {
     return (
         <Glass className="grid gap-6 p-5 md:grid-cols-[auto_minmax(0,1fr)] md:gap-8">
             <div>
-                <Label>Ultimele {all.games} meciuri</Label>
+                <Label>Recent {all.games} Matches</Label>
                 <div className="flex items-center gap-4 mt-2">
                     <WinDonut wins={all.wins} losses={all.games - all.wins} size={72} />
                     <div className="text-sm">
@@ -164,9 +164,9 @@ function Performance({ matches }) {
                 </div>
             </div>
             <div className="min-w-0">
-                <Label>Distribuție pe roluri</Label>
+                <Label>Role Distribution</Label>
                 {roles.length === 0 ? (
-                    <p className="text-sm text-white/45 mt-2">Fără date despre roluri încă.</p>
+                    <p className="text-sm text-white/45 mt-2">No role data available yet.</p>
                 ) : (
                     <div className="space-y-2 mt-2">
                         {roles.map((r) => (
@@ -176,7 +176,7 @@ function Performance({ matches }) {
                                 <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
                                     <div className="h-full rounded-full bg-gradient-to-r from-accent to-violet" style={{ width: `${(r.games / all.games) * 100}%` }} />
                                 </div>
-                                <span className="w-16 shrink-0 text-right text-xs tabular-nums text-white/50">{r.games} {r.games === 1 ? 'meci' : 'meciuri'}</span>
+                                <span className="w-16 shrink-0 text-right text-xs tabular-nums text-white/50">{r.games} {r.games === 1 ? 'match' : 'matches'}</span>
                                 <span className={`w-12 shrink-0 text-right font-semibold tabular-nums ${wrColor(r.winRate)}`}>{pct(r.winRate, 0)}</span>
                                 <span className="hidden w-40 shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-white/50 sm:block">{num(r.kda, 2)} KDA · {num(r.csPerMin, 1)} CS/min</span>
                             </div>
@@ -256,7 +256,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
     const onRefresh = async () => {
         setNote('');
         const r = await refreshPlayer(p.puuid);
-        if (!r.ok) { setNote(r.message ?? 'Încearcă din nou mai târziu'); return; }
+        if (!r.ok) { setNote(r.message ?? 'Please try again later'); return; }
         setStatus('pending');
         setPolling((n) => n + 1);
     };
@@ -265,7 +265,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
         e.preventDefault();
         setLinkError('');
         if (!linkRiotId.trim()) {
-            setLinkError('Introdu un Riot ID valid (Nume#TAG)');
+            setLinkError('Please enter a valid Riot ID (Name#TAG)');
             return;
         }
         try {
@@ -274,9 +274,17 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
             setLinkRiotId('');
             setVersion((v) => v + 1);
         } catch (err) {
-            setLinkError(err.message || 'Eroare la asociere');
+            setLinkError(err.message || 'Failed to link account');
         }
     };
+
+    if (!p && profile.error) {
+        return (
+            <div className="mx-auto max-w-3xl px-4 py-10">
+                <ErrorState error={profile.error} onRetry={profile.retry} />
+            </div>
+        );
+    }
 
     if (!p) {
         return (
@@ -320,19 +328,19 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                 />
             </div>
 
-            {/* Partea dreaptă: stats + meciuri */}
+            {/* Right side: stats + match history */}
             <div className={`${COL} space-y-4`}>
                 {!isOwnProfile && onBackToMyProfile && (
                     <div className="flex items-center justify-between rounded-2xl border border-accent/25 bg-accent/5 p-3.5 text-xs text-white/80 shadow-[0_0_20px_rgba(94,225,255,0.1)]">
                         <span className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
-                            <span>Vizualizezi profilul căutat: <strong className="text-white font-semibold">{p.name}#{p.tag}</strong></span>
+                            <span>Viewing searched profile: <strong className="text-white font-semibold">{p.name}#{p.tag}</strong></span>
                         </span>
                         <button
                             onClick={onBackToMyProfile}
                             className="rounded-xl bg-accent px-3 py-1.5 font-bold text-ink hover:bg-white transition shadow-sm"
                         >
-                            Înapoi la profilul meu
+                            Back to my profile
                         </button>
                     </div>
                 )}
@@ -342,7 +350,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                 {/* Match history header with Filters */}
                 <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-1">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-xs font-bold uppercase tracking-wider text-white/50">Istoric meciuri</h2>
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-white/50">Match History</h2>
                         <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/60 tabular-nums">
                             {list.length}
                         </span>
@@ -357,7 +365,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                                     queueFilter === 'all' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
                                 }`}
                             >
-                                Toate
+                                All
                             </button>
                             <button
                                 onClick={() => setQueueFilter('solo')}
@@ -384,7 +392,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                             className="flex items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.1] disabled:opacity-50"
                         >
                             <RefreshCw size={13} className={importing ? 'animate-spin' : ''} />
-                            <span>{importing ? 'Actualizare…' : 'Update'}</span>
+                            <span>{importing ? 'Updating…' : 'Update'}</span>
                         </button>
                     </div>
                 </div>
@@ -392,7 +400,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                 {list.length === 0 && (matches.loading || importing) && <SkeletonRows n={5} />}
                 {list.length === 0 && !matches.loading && !importing && (
                     <Glass className="p-8 text-center text-white/60">
-                        Niciun meci ranked găsit pentru filtrul selectat.
+                        No ranked matches found for the selected filter.
                     </Glass>
                 )}
 
@@ -401,14 +409,14 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                 ))}
             </div>
 
-            {/* Modal Schimbă Riot ID */}
+            {/* Modal Change Riot ID */}
             {linkModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
                     <Glass className="w-full max-w-md p-6 animate-rise">
                         <div className="flex items-center justify-between border-b border-white/10 pb-3">
                             <div className="flex items-center gap-2 text-white">
                                 <Link2 size={18} className="text-accent" />
-                                <h3 className="font-display font-semibold">Schimbă contul Riot asociat</h3>
+                                <h3 className="font-display font-semibold">Change Linked Riot Account</h3>
                             </div>
                             <button
                                 onClick={() => setLinkModalOpen(false)}
@@ -422,14 +430,14 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                             {linkError && <p className="text-xs text-loss">{linkError}</p>}
                             <div>
                                 <label className="mb-1.5 block text-xs font-medium text-white/70">
-                                    Riot ID Nou (Game Name#TAG)
+                                    New Riot ID (Game Name#TAG)
                                 </label>
                                 <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2 pl-3">
                                     <input
                                         type="text"
                                         value={linkRiotId}
                                         onChange={(e) => setLinkRiotId(e.target.value)}
-                                        placeholder="ex: Caps#EUW sau Faker#KR1"
+                                        placeholder="e.g. Caps#EUW or Faker#KR1"
                                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                         autoFocus
                                     />
@@ -443,13 +451,13 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                                     onClick={() => setLinkModalOpen(false)}
                                     className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/5"
                                 >
-                                    Anulează
+                                    Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     className="rounded-xl bg-accent px-4 py-2 text-xs font-bold text-ink hover:bg-white shadow-[0_0_15px_rgba(94,225,255,0.4)]"
                                 >
-                                    Actualizează Profilul
+                                    Update Profile
                                 </button>
                             </div>
                         </form>

@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Radio, Search, Shield, Clock, AlertCircle, Sparkles, ChevronRight, LayoutList, Columns2, ExternalLink, Zap, RefreshCw, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Radio, Search, Clock, AlertCircle, Sparkles, ExternalLink, RefreshCw, Loader2, Play } from 'lucide-react';
 import { Glass, Tile } from '../components/ui';
 import RoleIcon from '../components/RoleIcon';
 import RegionSelect from '../components/RegionSelect';
 import { SEARCH_REGIONS } from '../lib/constants';
-import { champIcon, loadAssets, getPlayerLiveGame, getFeaturedLiveGames } from '../services/riotService';
+import { champIcon, champId, loadAssets, getPlayerLiveGame } from '../services/riotService';
 import { navigate } from '../hooks/useUrl';
 
 const REGION_LIST = Object.keys(SEARCH_REGIONS);
@@ -40,8 +40,6 @@ const RUNE_ICONS = {
     'Phase Rush': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/PhaseRush/PhaseRush.png',
 };
 
-const itemImgUrl = (id) => (id ? `https://ddragon.leagueoflegends.com/cdn/14.23.1/img/item/${id}.png` : null);
-
 // ── Tree Styles Icons & Colors ──
 const STYLE_ICONS = {
     Precision: 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/7201_Precision.png',
@@ -52,16 +50,15 @@ const STYLE_ICONS = {
 };
 
 const STYLE_COLORS = {
-    Precision: { text: 'text-amber-400', border: 'border-amber-400/40', bg: 'bg-amber-400/[0.04]', badge: 'bg-amber-400/15 text-amber-300' },
-    Domination: { text: 'text-rose-400', border: 'border-rose-400/40', bg: 'bg-rose-400/[0.04]', badge: 'bg-rose-400/15 text-rose-300' },
-    Sorcery: { text: 'text-indigo-400', border: 'border-indigo-400/40', bg: 'bg-indigo-400/[0.04]', badge: 'bg-indigo-400/15 text-indigo-300' },
-    Resolve: { text: 'text-emerald-400', border: 'border-emerald-400/40', bg: 'bg-emerald-400/[0.04]', badge: 'bg-emerald-400/15 text-emerald-300' },
-    Inspiration: { text: 'text-sky-400', border: 'border-sky-400/40', bg: 'bg-sky-400/[0.04]', badge: 'bg-sky-400/15 text-sky-300' },
+    Precision: { text: 'text-amber-400', border: 'border-amber-400/40', bg: 'bg-amber-400/[0.04]' },
+    Domination: { text: 'text-rose-400', border: 'border-rose-400/40', bg: 'bg-rose-400/[0.04]' },
+    Sorcery: { text: 'text-indigo-400', border: 'border-indigo-400/40', bg: 'bg-indigo-400/[0.04]' },
+    Resolve: { text: 'text-emerald-400', border: 'border-emerald-400/40', bg: 'bg-emerald-400/[0.04]' },
+    Inspiration: { text: 'text-sky-400', border: 'border-sky-400/40', bg: 'bg-sky-400/[0.04]' },
 };
 
 const ALL_RUNE_ICONS = {
     ...RUNE_ICONS,
-    // Precision
     'Triumph': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/Triumph.png',
     'Presence of Mind': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/PresenceOfMind/PresenceOfMind.png',
     'Legend: Alacrity': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/LegendAlacrity/LegendAlacrity.png',
@@ -71,7 +68,6 @@ const ALL_RUNE_ICONS = {
     'Cut Down': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/CutDown/CutDown.png',
     'Last Stand': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Precision/LastStand/LastStand.png',
 
-    // Domination
     'Cheap Shot': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/CheapShot/CheapShot.png',
     'Taste of Blood': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png',
     'Sudden Impact': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/SuddenImpact/SuddenImpact.png',
@@ -80,7 +76,6 @@ const ALL_RUNE_ICONS = {
     'Relentless Hunter': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/RelentlessHunter/RelentlessHunter.png',
     'Ultimate Hunter': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Domination/UltimateHunter/UltimateHunter.png',
 
-    // Sorcery
     'Manaflow Band': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/ManaflowBand/ManaflowBand.png',
     'Transcendence': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/Transcendence/Transcendence.png',
     'Celerity': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/Celerity/CelerityTemp.png',
@@ -88,7 +83,6 @@ const ALL_RUNE_ICONS = {
     'Scorch': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/Scorch/Scorch.png',
     'Gathering Storm': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Sorcery/GatheringStorm/GatheringStorm.png',
 
-    // Resolve
     'Demolish': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Demolish/Demolish.png',
     'Font of Life': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/FontOfLife/FontOfLife.png',
     'Conditioning': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Conditioning/Conditioning.png',
@@ -98,14 +92,12 @@ const ALL_RUNE_ICONS = {
     'Revitalize': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Revitalize/Revitalize.png',
     'Unflinching': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Resolve/Unflinching/Unflinching.png',
 
-    // Inspiration
     'Hextech Flashtraption': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Inspiration/HextechFlashtraption/HextechFlashtraption.png',
     'Magical Footwear': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Inspiration/MagicalFootwear/MagicalFootwear.png',
     'Triple Tonic': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Inspiration/TripleTonic/TripleTonic.png',
     'Biscuit Delivery': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Inspiration/BiscuitDelivery/BiscuitDelivery.png',
     'Cosmic Insight': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/Inspiration/CosmicInsight/CosmicInsight.png',
 
-    // Stat Shards
     'Adaptive Force': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/StatMods/StatModsAdaptiveForceIcon.png',
     'Attack Speed': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/StatMods/StatModsAttackSpeedIcon.png',
     'Ability Haste': 'https://ddragon.leagueoflegends.com/cdn/img/perk-images/StatMods/StatModsCDRIcon.png',
@@ -248,321 +240,244 @@ function formatDuration(sec) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
-// ── Spacious, Non-Squished Player Row with Perfectly Centered Spells & Runes ──
-function PlayerRow({ player, isBlue, assets, onInspectPlayer, onInspectRunes }) {
+// ── Compact Player Row Component for Split Screen (No empty items) ──
+function PlayerRow({ player, isBlue, isTarget, onInspectPlayer, onInspectRunes }) {
     const champImgUrl = champIcon(player.champ);
 
     return (
-        <div onClick={() => onInspectPlayer?.(player)}
-             className={`group relative flex items-center justify-between gap-4 rounded-2xl border px-5 py-3 transition duration-150 hover:border-white/20 hover:bg-white/[0.04] cursor-pointer ${
-                 player.isYou
-                     ? 'border-accent bg-accent/[0.08] shadow-[0_0_24px_rgba(94,225,255,0.18)] ring-1 ring-accent/60'
-                     : 'border-white/[0.07] bg-white/[0.02]'
-             }`}>
+        <div
+            onClick={() => onInspectPlayer?.(player)}
+            className={`group relative flex items-center justify-between gap-3 rounded-2xl border p-2.5 sm:px-3.5 sm:py-2.5 transition duration-150 cursor-pointer ${
+                isTarget || player.isYou
+                    ? 'border-accent bg-accent/[0.09] shadow-[0_0_24px_rgba(94,225,255,0.2)] ring-1 ring-accent/60'
+                    : 'border-white/[0.07] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]'
+            }`}
+        >
             {/* Section 1: Role & Champion Avatar */}
-            <div className="flex items-center gap-3 shrink-0">
-                {/* Role Icon */}
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-black/50 border border-white/10" title={`Role: ${player.role}`}>
-                    <RoleIcon role={player.role} className="h-5 w-5" />
+            <div className="flex items-center gap-2.5 shrink-0">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/50 border border-white/10" title={`Role: ${player.role}`}>
+                    <RoleIcon role={player.role} className="h-4 w-4" />
                 </div>
 
-                {/* Champion Avatar (Clicking navigates to champion detail page) */}
-                <div className="relative shrink-0 cursor-pointer group/champ"
-                     onClick={(e) => {
-                         e.stopPropagation();
-                         navigate(`/champions/${encodeURIComponent(player.champ)}`);
-                     }}
-                     title={`Mergi la pagina campionului ${player.champ}`}>
-                    <Tile label={player.champ} src={champImgUrl} className="h-12 w-12 !rounded-xl border border-white/15 transition group-hover/champ:scale-105 group-hover/champ:border-accent" />
+                <div
+                    className="relative shrink-0 cursor-pointer group/champ"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/champions/${encodeURIComponent(champId(player.champ))}`);
+                    }}
+                    title={`Go to champion page for ${player.champ}`}
+                >
+                    <Tile label={player.champ} src={champImgUrl} className="h-11 w-11 !rounded-xl border border-white/15 transition group-hover/champ:scale-105 group-hover/champ:border-accent" />
                     <span className={`absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded text-[9px] font-bold shadow ${isBlue ? 'bg-sky-500 text-ink' : 'bg-rose-500 text-white'}`}>
                         {player.role ? player.role[0].toUpperCase() : '?'}
                     </span>
                 </div>
             </div>
 
-            {/* Section 2: Player Details & Rank (Fixed width so Spells/Runes/Items align across rows) */}
-            <div className="w-52 shrink-0 min-w-0">
-                <div className="flex items-center gap-1.5">
-                    <span className={`text-base font-bold truncate ${player.isYou ? 'text-accent' : 'text-white'}`} title={player.name}>
+            {/* Section 2: Player Details & Rank */}
+            <div className="min-w-0 flex-1 truncate">
+                <div className="flex items-center gap-1.5 truncate">
+                    <span className={`text-sm font-bold truncate ${isTarget || player.isYou ? 'text-accent' : 'text-white'}`} title={player.name}>
                         {player.name}
                     </span>
-                    <span className="text-xs text-white/40 shrink-0">#{player.tag}</span>
-                    {player.isYou && (
-                        <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-accent tracking-wider shrink-0">
-                            YOU
+                    <span className="text-[11px] text-white/40 shrink-0">#{player.tag}</span>
+                    {(isTarget || player.isYou) && (
+                        <span className="rounded bg-accent/25 px-1.5 py-0.2 text-[8px] font-bold uppercase text-accent tracking-wider shrink-0">
+                            {player.isYou ? 'YOU' : 'SEARCHED'}
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-white/50 mt-0.5 truncate">
-                    {/* Champion Name link */}
-                    <span onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/champions/${encodeURIComponent(player.champ)}`);
-                          }}
-                          className="font-semibold text-white/85 transition hover:text-accent hover:underline cursor-pointer"
-                          title={`Mergi la pagina campionului ${player.champ}`}>
+                <div className="flex items-center gap-1.5 text-xs text-white/50 mt-0.5 truncate">
+                    <span
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/champions/${encodeURIComponent(champId(player.champ))}`);
+                        }}
+                        className="font-semibold text-white/85 transition hover:text-accent hover:underline cursor-pointer"
+                        title={`Go to champion page for ${player.champ}`}
+                    >
                         {player.champ}
                     </span>
                     <span>·</span>
-                    <span className="font-medium text-amber-300">{player.rank} {player.lp ? `(${player.lp} LP)` : ''}</span>
+                    <span className="font-medium text-amber-300 truncate">{player.rank} {player.lp ? `(${player.lp} LP)` : ''}</span>
                 </div>
             </div>
 
-            {/* Section 3: Summoner Spells & Keystone Rune - Perfectly Centered Vertically & Horizontally */}
-            <div className="flex shrink-0 items-center justify-center gap-2.5 w-24">
-                {/* 2 Summoner Spells stacked vertically (20px + 4px + 20px = 44px height) */}
+            {/* Section 3: Summoner Spells & Keystone */}
+            <div className="flex shrink-0 items-center justify-center gap-1.5">
                 <div className="flex flex-col gap-1 items-center justify-center">
                     {(player.spells || ['Flash', 'Teleport']).map((sp, idx) => (
                         <img key={idx} src={SPELL_ICONS[sp] || SPELL_ICONS.Flash} alt={sp} title={`Spell: ${sp}`}
-                             className="h-5 w-5 rounded-md border border-white/20 object-cover shadow-sm transition hover:scale-110" />
+                             className="h-4.5 w-4.5 rounded border border-white/20 object-cover shadow-sm transition hover:scale-110" />
                     ))}
                 </div>
-                {/* Keystone Rune Circle (Clicking opens the Full Rune Page Modal!) */}
-                <button onClick={(e) => {
-                            e.stopPropagation();
-                            onInspectRunes?.(player);
-                        }}
-                        className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/60 p-1 shadow-inner transition hover:scale-110 hover:border-accent hover:shadow-[0_0_15px_rgba(94,225,255,0.4)] cursor-pointer"
-                        title={`Apasă pentru a vedea pagina completă de rune (${player.rune})`}>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onInspectRunes?.(player);
+                    }}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/60 p-1 shadow-inner transition hover:scale-110 hover:border-accent hover:shadow-[0_0_12px_rgba(94,225,255,0.4)] cursor-pointer"
+                    title={`Click to inspect full rune page (${player.rune})`}
+                >
                     <img src={RUNE_ICONS[player.rune] || RUNE_ICONS.Conqueror} alt={player.rune}
-                         className="h-7 w-7 object-contain drop-shadow" />
+                         className="h-6 w-6 object-contain drop-shadow" />
                 </button>
             </div>
 
-            {/* Section 4: Build Items (6 Items + 1 Trinket) */}
-            <div className="flex shrink-0 items-center gap-1.5 rounded-xl bg-black/45 p-1.5 border border-white/[0.08]">
-                {(player.items || [0, 0, 0, 0, 0, 0, 3340]).map((itemId, idx) => {
-                    const isTrinket = idx === 6;
-                    const src = itemImgUrl(itemId);
-                    return src ? (
-                        <Tile key={idx} label={`Item ${itemId}`} src={src}
-                              className={`h-8 w-8 !rounded-lg border border-white/10 ${isTrinket ? '!rounded-full border-amber-400/50' : ''}`} />
-                    ) : (
-                        <div key={idx} className={`h-8 w-8 border border-white/[0.06] bg-white/[0.02] ${isTrinket ? 'rounded-full border-dashed border-amber-400/20' : 'rounded-lg'}`} />
-                    );
-                })}
-            </div>
-
-            {/* Section 5: Win rate & Performance */}
-            <div className="w-24 shrink-0 text-right">
-                <p className={`text-sm font-bold tabular-nums ${player.wr >= 50 ? 'text-sky-400' : 'text-rose-400'}`}>
+            {/* Section 4: Win rate & Performance */}
+            <div className="w-16 shrink-0 text-right">
+                <p className={`text-xs font-bold tabular-nums ${player.wr >= 50 ? 'text-sky-400' : 'text-rose-400'}`}>
                     {player.wr}% WR
                 </p>
-                <p className="text-xs text-white/40 tabular-nums">
-                    {player.games} games
+                <p className="text-[10px] text-white/40 tabular-nums">
+                    {player.games}g
                 </p>
             </div>
         </div>
     );
 }
 
-// ── Full Champ Select & Live Game Visualizer (Spacious Stacked Layout) ──
-function LiveGameView({ match, assets, onInspectPlayer, onInspectRunes }) {
-    const [seconds, setSeconds] = useState(match.gameTimeSeconds);
-    const [layoutMode, setLayoutMode] = useState('stacked'); // 'stacked' (full width) or 'split' (side by side)
+// ── Live Game View (Split Screen Layout) ──
+function LiveGameView({ match, assets, searchedQuery, onInspectPlayer, onInspectRunes, onRefresh, isRefreshing }) {
+    const [seconds, setSeconds] = useState(match.gameTimeSeconds || 0);
 
     useEffect(() => {
-        setSeconds(match.gameTimeSeconds);
+        setSeconds(match.gameTimeSeconds || 0);
         const interval = setInterval(() => {
             setSeconds((s) => s + 1);
         }, 1000);
         return () => clearInterval(interval);
     }, [match]);
 
+    // Check which team the searched player is on so their team is ALWAYS on the LEFT
+    const isSearched = (p) => {
+        if (!p) return false;
+        if (p.isYou) return true;
+        if (!searchedQuery) return false;
+        const q = searchedQuery.toLowerCase().trim();
+        const cleanQ = q.split('#')[0].trim();
+        const pName = (p.name || '').toLowerCase().trim();
+        return pName === cleanQ || `${pName}#${(p.tag || '').toLowerCase()}` === q;
+    };
+
+    const searchedInBlue = match.blueTeam?.players?.some(isSearched);
+    const searchedInRed = match.redTeam?.players?.some(isSearched);
+
+    // If the searched player is in Red Team, Red is on the Left! Otherwise Blue is on the Left.
+    const leftTeam = searchedInRed ? match.redTeam : match.blueTeam;
+    const rightTeam = searchedInRed ? match.blueTeam : match.redTeam;
+    const leftIsBlue = !searchedInRed;
+    const rightIsBlue = searchedInRed;
+
     return (
-        <Glass className="overflow-hidden p-6 border border-white/[0.1] bg-gradient-to-b from-white/[0.05] to-transparent shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
-            {/* Header */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+        <Glass className="overflow-hidden border border-white/15 p-5 sm:p-6 shadow-2xl">
+            {/* Match Header Bar */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
                 <div className="flex items-center gap-3">
-                    <span className="flex h-3 w-3 relative">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500" />
+                    <span className="relative flex h-3.5 w-3.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-emerald-500 shadow-[0_0_12px_#10b981]" />
                     </span>
                     <div>
-                        <div className="flex items-center gap-2">
-                            <span className="font-display text-xl font-bold text-white tracking-tight">
-                                {match.phase === 'champ_select' ? 'Champ Select in Progress' : 'Live Match'}
+                        <h2 className="font-display text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                            <span>{match.mode || 'Ranked Solo/Duo'}</span>
+                            <span className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-xs font-semibold text-white/70">
+                                {match.region || 'EUW'}
                             </span>
-                            <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-300">
-                                {match.phase === 'champ_select' ? 'SELECTING' : 'LIVE'}
-                            </span>
-                        </div>
-                        <p className="text-xs text-white/50 mt-0.5">
-                            {match.mode} · {match.tier} {match.avgLp ? `(~${match.avgLp} LP)` : ''} · {match.region}
-                        </p>
+                        </h2>
+                        {match.tier && (
+                            <p className="text-xs text-white/50">
+                                Average Match MMR: <span className="font-semibold text-amber-300">{match.tier}{match.avgLp != null ? ` (${match.avgLp} LP)` : ''}</span>
+                            </p>
+                        )}
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {/* View Switcher: Stacked vs Split */}
-                    <div className="hidden sm:flex rounded-xl border border-white/10 bg-white/[0.04] p-0.5">
-                        <button onClick={() => setLayoutMode('stacked')}
-                                title="Stacked View (Spacious full width)"
-                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${layoutMode === 'stacked' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}>
-                            <LayoutList size={13} /> Full Width
-                        </button>
-                        <button onClick={() => setLayoutMode('split')}
-                                title="Split View (Side by side)"
-                                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${layoutMode === 'split' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}>
-                            <Columns2 size={13} /> Split
-                        </button>
-                    </div>
-
-                    <div className="hidden sm:flex items-center gap-1.5 text-xs text-white/40">
-                        <span className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">P</span>
-                        <span>Inspect build</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm font-semibold tabular-nums text-white">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white">
                         <Clock size={15} className="text-accent" />
-                        {match.phase === 'champ_select' ? '00:45' : formatDuration(seconds)}
+                        <span>{match.phase === 'champ_select' ? 'Champ Select' : formatDuration(seconds)}</span>
                     </div>
+
+                    {onRefresh && (
+                        <button onClick={onRefresh} disabled={isRefreshing}
+                                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-white/10 hover:text-white disabled:opacity-50">
+                            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+                            <span>Refresh</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Bans Bar */}
-            <div className="mb-6 grid grid-cols-2 gap-4 rounded-xl border border-white/[0.06] bg-black/35 p-3.5">
-                <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-bold uppercase tracking-wider text-sky-400">Blue Bans:</span>
-                    <div className="flex gap-1.5">
-                        {match.blueTeam.bans.map((c, i) => (
-                            <div key={i} className="relative group cursor-pointer" title={`Banned: ${c} (Apasă pentru detalii)`}
-                                 onClick={() => navigate(`/champions/${encodeURIComponent(c)}`)}>
-                                <Tile label={c} src={champIcon(c)} className="h-8 w-8 !rounded-lg opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition group-hover:scale-105" />
-                                <span className="absolute inset-0 grid place-items-center text-rose-400 font-bold text-xs pointer-events-none">✕</span>
-                            </div>
+            {/* Split Screen Grid (Left: Searched Player Team / Right: Enemy Team) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                {/* LEFT TEAM: Searched Player's Team */}
+                <div className="space-y-3">
+                    <div className={`flex items-center justify-between border-b pb-2 ${leftIsBlue ? 'border-sky-500/25' : 'border-rose-500/25'}`}>
+                        <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${leftIsBlue ? 'bg-sky-400 shadow-[0_0_8px_#38bdf8]' : 'bg-rose-400 shadow-[0_0_8px_#fb7185]'}`} />
+                            <span className={`font-display text-sm font-bold uppercase tracking-wider ${leftIsBlue ? 'text-sky-400' : 'text-rose-400'}`}>
+                                {leftIsBlue ? 'Blue Team' : 'Red Team'}
+                            </span>
+                            {(searchedInBlue || searchedInRed) && (
+                                <span className="rounded bg-accent/20 px-2 py-0.5 text-[10px] font-bold text-accent uppercase tracking-wider">
+                                    Your Team
+                                </span>
+                            )}
+                        </div>
+                        <span className="text-xs text-white/40">5 Champions</span>
+                    </div>
+
+                    <div className="space-y-2">
+                        {leftTeam?.players?.map((p, i) => (
+                            <PlayerRow
+                                key={i}
+                                player={p}
+                                isBlue={leftIsBlue}
+                                isTarget={isSearched(p)}
+                                assets={assets}
+                                onInspectPlayer={onInspectPlayer}
+                                onInspectRunes={onInspectRunes}
+                            />
                         ))}
                     </div>
                 </div>
-                <div className="flex items-center justify-end gap-2.5">
-                    <span className="text-xs font-bold uppercase tracking-wider text-rose-400">Red Bans:</span>
-                    <div className="flex gap-1.5">
-                        {match.redTeam.bans.map((c, i) => (
-                            <div key={i} className="relative group cursor-pointer" title={`Banned: ${c} (Apasă pentru detalii)`}
-                                 onClick={() => navigate(`/champions/${encodeURIComponent(c)}`)}>
-                                <Tile label={c} src={champIcon(c)} className="h-8 w-8 !rounded-lg opacity-60 grayscale hover:opacity-100 hover:grayscale-0 transition group-hover:scale-105" />
-                                <span className="absolute inset-0 grid place-items-center text-rose-400 font-bold text-xs pointer-events-none">✕</span>
-                            </div>
+
+                {/* RIGHT TEAM: Opposing Team */}
+                <div className="space-y-3">
+                    <div className={`flex items-center justify-between border-b pb-2 ${rightIsBlue ? 'border-sky-500/25' : 'border-rose-500/25'}`}>
+                        <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${rightIsBlue ? 'bg-sky-400 shadow-[0_0_8px_#38bdf8]' : 'bg-rose-400 shadow-[0_0_8px_#fb7185]'}`} />
+                            <span className={`font-display text-sm font-bold uppercase tracking-wider ${rightIsBlue ? 'text-sky-400' : 'text-rose-400'}`}>
+                                {rightIsBlue ? 'Blue Team' : 'Red Team'}
+                            </span>
+                            <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/50 uppercase tracking-wider">
+                                Enemy Team
+                            </span>
+                        </div>
+                        <span className="text-xs text-white/40">5 Champions</span>
+                    </div>
+
+                    <div className="space-y-2">
+                        {rightTeam?.players?.map((p, i) => (
+                            <PlayerRow
+                                key={i}
+                                player={p}
+                                isBlue={rightIsBlue}
+                                isTarget={isSearched(p)}
+                                assets={assets}
+                                onInspectPlayer={onInspectPlayer}
+                                onInspectRunes={onInspectRunes}
+                            />
                         ))}
                     </div>
                 </div>
             </div>
-
-            {/* Teams Display: Stacked (Default) vs Split */}
-            {layoutMode === 'stacked' ? (
-                <div className="space-y-8">
-                    {/* Blue Team Section */}
-                    <div className="space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-sky-500/25 pb-2.5">
-                            <span className="font-display text-sm font-bold uppercase tracking-wider text-sky-400 flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full bg-sky-400 shadow-[0_0_10px_#38bdf8]" /> Blue Team
-                            </span>
-                            <span className="text-xs text-white/40">5 Champions</span>
-                        </div>
-                        <div className="space-y-2">
-                            {match.blueTeam.players.map((p, i) => (
-                                <PlayerRow key={i} player={p} isBlue={true} assets={assets} onInspectPlayer={onInspectPlayer} onInspectRunes={onInspectRunes} />
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Red Team Section */}
-                    <div className="space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-rose-500/25 pb-2.5">
-                            <span className="font-display text-sm font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_10px_#fb7185]" /> Red Team
-                            </span>
-                            <span className="text-xs text-white/40">5 Champions</span>
-                        </div>
-                        <div className="space-y-2">
-                            {match.redTeam.players.map((p, i) => (
-                                <PlayerRow key={i} player={p} isBlue={false} assets={assets} onInspectPlayer={onInspectPlayer} onInspectRunes={onInspectRunes} />
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="grid gap-6 xl:grid-cols-2">
-                    {/* Blue Team Split */}
-                    <div className="space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-sky-500/25 pb-2">
-                            <span className="font-display text-sm font-bold uppercase tracking-wider text-sky-400 flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full bg-sky-400" /> Blue Team
-                            </span>
-                            <span className="text-xs text-white/40">5 Champions</span>
-                        </div>
-                        <div className="space-y-2">
-                            {match.blueTeam.players.map((p, i) => (
-                                <PlayerRow key={i} player={p} isBlue={true} assets={assets} onInspectPlayer={onInspectPlayer} onInspectRunes={onInspectRunes} />
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Red Team Split */}
-                    <div className="space-y-2.5">
-                        <div className="flex items-center justify-between border-b border-rose-500/25 pb-2">
-                            <span className="font-display text-sm font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full bg-rose-400" /> Red Team
-                            </span>
-                            <span className="text-xs text-white/40">5 Champions</span>
-                        </div>
-                        <div className="space-y-2">
-                            {match.redTeam.players.map((p, i) => (
-                                <PlayerRow key={i} player={p} isBlue={false} assets={assets} onInspectPlayer={onInspectPlayer} onInspectRunes={onInspectRunes} />
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
         </Glass>
     );
 }
 
-// ── Mini Apex Match Card (Bottom List) ──
-function ApexMatchCard({ match, isSelected, onSelect }) {
-    return (
-        <div onClick={onSelect}
-             className={`group cursor-pointer rounded-2xl border p-4 transition duration-150 hover:border-white/20 hover:bg-white/[0.04] ${isSelected ? 'border-accent bg-accent/[0.05] shadow-[0_0_15px_rgba(94,225,255,0.12)] ring-1 ring-accent/40' : 'border-white/[0.07] bg-white/[0.02]'}`}>
-            <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs font-bold text-white tracking-wide">{match.tier} Lobby</span>
-                    <span className="text-[11px] text-white/40">Avg {match.avgLp} LP</span>
-                </div>
-                <span className="flex items-center gap-1 rounded bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-medium text-white/60">
-                    <Clock size={11} /> {match.phase === 'champ_select' ? 'Champ Select' : `${Math.floor(match.gameTimeSeconds / 60)}m`}
-                </span>
-            </div>
-
-            {/* Matchup preview */}
-            <div className="grid grid-cols-2 gap-3 border-t border-white/[0.05] pt-3">
-                <div>
-                    <p className="mb-1 text-[10px] font-semibold uppercase text-sky-400">Blue Team</p>
-                    <div className="flex gap-1.5">
-                        {match.blueTeam.players.map((p, idx) => (
-                            <Tile key={idx} label={p.champ} src={champIcon(p.champ)} className="h-8 w-8 !rounded-md" />
-                        ))}
-                    </div>
-                </div>
-                <div>
-                    <p className="mb-1 text-[10px] font-semibold uppercase text-rose-400">Red Team</p>
-                    <div className="flex gap-1.5">
-                        {match.redTeam.players.map((p, idx) => (
-                            <Tile key={idx} label={p.champ} src={champIcon(p.champ)} className="h-8 w-8 !rounded-md" />
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            <div className="mt-3 flex items-center justify-between text-xs text-white/40 group-hover:text-accent transition">
-                <span>Inspect full Champ Select, Build & Runes</span>
-                <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
-            </div>
-        </div>
-    );
-}
-
-// ── Detailed Build & Player Inspect Modal ──
+// ── Player Inspect Modal ──
 function PlayerModal({ player, onClose, onSearchProfile, onInspectRunes }) {
     if (!player) return null;
     return (
@@ -570,8 +485,8 @@ function PlayerModal({ player, onClose, onSearchProfile, onInspectRunes }) {
             <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-ink p-6 shadow-2xl animate-rise" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center gap-3 border-b border-white/10 pb-4">
                     <div className="cursor-pointer group/av"
-                         onClick={() => { navigate(`/champions/${encodeURIComponent(player.champ)}`); onClose(); }}
-                         title={`Mergi la pagina campionului ${player.champ}`}>
+                         onClick={() => { navigate(`/champions/${encodeURIComponent(champId(player.champ))}`); onClose(); }}
+                         title={`Go to champion page for ${player.champ}`}>
                         <Tile label={player.champ} src={champIcon(player.champ)} className="h-14 w-14 !rounded-xl transition group-hover/av:scale-105 group-hover/av:border-accent" />
                     </div>
                     <div>
@@ -580,8 +495,8 @@ function PlayerModal({ player, onClose, onSearchProfile, onInspectRunes }) {
                         </h3>
                         <p className="text-xs text-white/50">
                             <span className="font-semibold text-accent cursor-pointer hover:underline"
-                                  onClick={() => { navigate(`/champions/${encodeURIComponent(player.champ)}`); onClose(); }}
-                                  title={`Mergi la pagina campionului ${player.champ}`}>
+                                  onClick={() => { navigate(`/champions/${encodeURIComponent(champId(player.champ))}`); onClose(); }}
+                                  title={`Go to champion page for ${player.champ}`}>
                                 {player.champ}
                             </span>
                             <span> · {player.rank} ({player.lp} LP)</span>
@@ -597,7 +512,7 @@ function PlayerModal({ player, onClose, onSearchProfile, onInspectRunes }) {
                             <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Spells & Keystone</p>
                             <button onClick={() => { onClose(); onInspectRunes?.(player); }}
                                     className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-1">
-                                <Sparkles size={12} /> Vezi Pagina Completă de Rune →
+                                <Sparkles size={12} /> View Full Rune Page →
                             </button>
                         </div>
                         <div className="flex items-center gap-3">
@@ -611,26 +526,11 @@ function PlayerModal({ player, onClose, onSearchProfile, onInspectRunes }) {
                             </div>
                             <div onClick={() => { onClose(); onInspectRunes?.(player); }}
                                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] p-1.5 cursor-pointer hover:border-accent hover:bg-accent/10 transition group"
-                                 title="Apasă pentru a vedea pagina completă de rune">
+                                 title="Click to view full rune page">
                                 <img src={RUNE_ICONS[player.rune] || RUNE_ICONS.Conqueror} alt={player.rune} className="h-6 w-6 rounded-full" />
                                 <span className="text-xs text-white/80 font-medium">{player.rune}</span>
-                                <span className="text-[10px] text-accent font-semibold ml-1">Rune ↗</span>
+                                <span className="text-[10px] text-accent font-semibold ml-1">Runes ↗</span>
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Current Items Build */}
-                    <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">Inventory & Build Order</p>
-                        <div className="flex gap-1.5 rounded-xl border border-white/10 bg-black/40 p-2">
-                            {(player.items || [0, 0, 0, 0, 0, 0, 3340]).map((itemId, idx) => {
-                                const src = itemImgUrl(itemId);
-                                return src ? (
-                                    <Tile key={idx} label={`Item ${itemId}`} src={src} className={`h-10 w-10 !rounded-lg ${idx === 6 ? '!rounded-full border-amber-400/50' : ''}`} />
-                                ) : (
-                                    <div key={idx} className={`h-10 w-10 border border-white/[0.08] bg-white/[0.02] ${idx === 6 ? 'rounded-full' : 'rounded-lg'}`} />
-                                );
-                            })}
                         </div>
                     </div>
 
@@ -671,8 +571,8 @@ function RunePageModal({ player, onClose }) {
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                     <div className="flex items-center gap-3.5">
                         <div className="cursor-pointer group/av"
-                             onClick={() => { navigate(`/champions/${encodeURIComponent(player.champ)}`); onClose(); }}
-                             title={`Mergi la pagina campionului ${player.champ}`}>
+                             onClick={() => { navigate(`/champions/${encodeURIComponent(champId(player.champ))}`); onClose(); }}
+                             title={`Go to champion page for ${player.champ}`}>
                             <Tile label={player.champ} src={champIcon(player.champ)} className="h-14 w-14 !rounded-2xl border border-white/20 transition group-hover/av:scale-105 group-hover/av:border-accent" />
                         </div>
                         <div>
@@ -684,14 +584,14 @@ function RunePageModal({ player, onClose }) {
                             </div>
                             <p className="text-xs text-white/60 mt-0.5 flex items-center gap-2">
                                 <span className="cursor-pointer font-semibold text-accent hover:underline"
-                                      onClick={() => { navigate(`/champions/${encodeURIComponent(player.champ)}`); onClose(); }}
-                                      title={`Mergi la pagina campionului ${player.champ}`}>
+                                      onClick={() => { navigate(`/champions/${encodeURIComponent(champId(player.champ))}`); onClose(); }}
+                                      title={`Go to champion page for ${player.champ}`}>
                                     {player.champ}
                                 </span>
                                 <span>·</span>
                                 <span className="font-medium text-amber-300">{player.rank}</span>
                                 <span>·</span>
-                                <span className="text-white/85 font-medium">Pagina Completă de Rune</span>
+                                <span className="text-white/85 font-medium">Full Rune Page</span>
                             </p>
                         </div>
                     </div>
@@ -704,11 +604,10 @@ function RunePageModal({ player, onClose }) {
                 <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-5">
                     {/* Primary Tree */}
                     <div className={`rounded-2xl border ${primColor.border} ${primColor.bg} p-4.5 space-y-4`}>
-                        {/* Tree Header */}
                         <div className="flex items-center gap-2.5 border-b border-white/10 pb-2.5">
                             <img src={STYLE_ICONS[runePage.primaryStyle]} alt={runePage.primaryStyle} className="h-7 w-7 object-contain" />
                             <div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Calea Principală</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Primary Path</span>
                                 <h4 className={`text-base font-bold ${primColor.text}`}>{runePage.primaryStyle}</h4>
                             </div>
                         </div>
@@ -720,7 +619,7 @@ function RunePageModal({ player, onClose }) {
                                      className="h-10 w-10 object-contain drop-shadow" />
                             </div>
                             <div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Runa Cheie (Keystone)</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Keystone Rune</span>
                                 <p className="text-base font-bold text-white">{runePage.keystone}</p>
                             </div>
                         </div>
@@ -743,18 +642,15 @@ function RunePageModal({ player, onClose }) {
 
                     {/* Secondary Tree & Stat Shards */}
                     <div className="space-y-4">
-                        {/* Secondary Tree */}
                         <div className={`rounded-2xl border ${secColor.border} ${secColor.bg} p-4.5 space-y-3`}>
-                            {/* Secondary Header */}
                             <div className="flex items-center gap-2.5 border-b border-white/10 pb-2">
                                 <img src={STYLE_ICONS[runePage.secondaryStyle]} alt={runePage.secondaryStyle} className="h-6 w-6 object-contain" />
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Calea Secundară</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Secondary Path</span>
                                     <h4 className={`text-sm font-bold ${secColor.text}`}>{runePage.secondaryStyle}</h4>
                                 </div>
                             </div>
 
-                            {/* Secondary Runes */}
                             <div className="space-y-2">
                                 {runePage.secondaryRunes.map((runeName, idx) => (
                                     <div key={idx} className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
@@ -762,7 +658,7 @@ function RunePageModal({ player, onClose }) {
                                             <img src={ALL_RUNE_ICONS[runeName] || RUNE_ICONS.Conqueror} alt={runeName} className="h-5 w-5 object-contain" />
                                         </div>
                                         <div>
-                                            <span className="text-[9px] uppercase tracking-wider text-white/40">Secundar {idx + 1}</span>
+                                            <span className="text-[9px] uppercase tracking-wider text-white/40">Secondary {idx + 1}</span>
                                             <p className="text-xs font-semibold text-white/90">{runeName}</p>
                                         </div>
                                     </div>
@@ -772,7 +668,7 @@ function RunePageModal({ player, onClose }) {
 
                         {/* Stat Shards */}
                         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4.5">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2 block">Fragmente de Statistici (Shards)</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 mb-2 block">Stat Shards</span>
                             <div className="grid grid-cols-3 gap-2">
                                 {runePage.shards.map((shard, idx) => (
                                     <div key={idx} className="flex flex-col items-center gap-1 rounded-xl border border-white/[0.08] bg-black/40 p-2 text-center"
@@ -788,13 +684,13 @@ function RunePageModal({ player, onClose }) {
 
                 {/* Footer Actions */}
                 <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-4">
-                    <button onClick={() => { navigate(`/champions/${encodeURIComponent(player.champ)}`); onClose(); }}
+                    <button onClick={() => { navigate(`/champions/${encodeURIComponent(champId(player.champ))}`); onClose(); }}
                             className="flex items-center gap-2 text-xs font-semibold text-accent hover:underline">
-                        <Sparkles size={14} /> Vezi toate build-urile și runele populare pe {player.champ}
+                        <Sparkles size={14} /> View all builds and popular runes for {player.champ}
                     </button>
                     <button onClick={onClose}
                             className="rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20 transition">
-                        Închide
+                        Close
                     </button>
                 </div>
             </div>
@@ -802,265 +698,182 @@ function RunePageModal({ player, onClose }) {
     );
 }
 
-export default function LiveGame({ summoner, onSearch, onNavigate }) {
+export default function LiveGame({ summoner, onSearch }) {
     const [searchName, setSearchName] = useState('');
-    const [region, setRegion] = useState(summoner?.region || 'EUW');
+    const [region, setRegion] = useState(summoner?.region || 'EUNE');
     const [assets, setAssets] = useState(null);
     const [inspectingPlayer, setInspectingPlayer] = useState(null);
     const [inspectingRunePlayer, setInspectingRunePlayer] = useState(null);
 
-    // ── Real Backend Live Game State ──
-    const [userMatch, setUserMatch] = useState(null);
-    const [loadingUserMatch, setLoadingUserMatch] = useState(false);
-    const [userMatchChecked, setUserMatchChecked] = useState(false);
-
-    // ── Real Featured Apex Matches from Backend ──
-    const [featuredMatches, setFeaturedMatches] = useState([]);
-    const [loadingFeatured, setLoadingFeatured] = useState(false);
-    const [selectedFeaturedMatch, setSelectedFeaturedMatch] = useState(null);
+    // ── Pure Lazy Single Live Match State ──
+    const [searchedId, setSearchedId] = useState('');
+    const [searchedRegion, setSearchedRegion] = useState('');
+    const [liveMatch, setLiveMatch] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
+    const [error, setError] = useState('');
+    const reqId = useRef(0); // only the latest search may update the page
 
     useEffect(() => {
         loadAssets().then(setAssets).catch(() => {});
     }, []);
 
-    // Query active game for a given summoner
-    const checkLiveGame = async (riotId, reg) => {
-        if (!riotId) return;
-        setLoadingUserMatch(true);
-        setUserMatchChecked(true);
+    // ── Single on-demand request: GET /v1/players/{region}/{name}/{tag}/live ──
+    const searchLiveGame = async (riotIdToSearch, regToSearch) => {
+        const targetId = (riotIdToSearch || searchName).trim();
+        const targetReg = regToSearch || region;
+        if (!targetId) return;
+
+        setLoading(true);
+        setError('');
+        setHasSearched(true);
+        setSearchedId(targetId);
+        setSearchedRegion(targetReg);
+
+        const id = ++reqId.current;
         try {
-            const data = await getPlayerLiveGame(riotId, reg || region);
-            setUserMatch(data);
-            if (data) setSelectedFeaturedMatch(null);
+            const data = await getPlayerLiveGame(targetId, targetReg);
+            if (id !== reqId.current) return;
+            setLiveMatch(data);
         } catch (err) {
-            setUserMatch(null);
+            if (id !== reqId.current) return;
+            setLiveMatch(null);
+            setError(err.message || 'Player not found or spectator data unavailable.');
         } finally {
-            setLoadingUserMatch(false);
+            if (id === reqId.current) setLoading(false);
         }
     };
-
-    // Auto-check live match when connected summoner changes
-    useEffect(() => {
-        if (summoner?.name) {
-            checkLiveGame(summoner.name, summoner.region);
-        }
-    }, [summoner]);
-
-    // Load featured live games from backend
-    const loadFeatured = (reg) => {
-        setLoadingFeatured(true);
-        getFeaturedLiveGames(reg || region)
-            .then((list) => {
-                const arr = list || [];
-                setFeaturedMatches(arr);
-                if (arr.length > 0 && !selectedFeaturedMatch && !userMatch) {
-                    setSelectedFeaturedMatch(arr[0]);
-                }
-            })
-            .catch(() => setFeaturedMatches([]))
-            .finally(() => setLoadingFeatured(false));
-    };
-
-    useEffect(() => {
-        loadFeatured(region);
-    }, [region]);
-
-    const currentDisplayMatch = selectedFeaturedMatch || userMatch;
-
-    // ── Keyboard shortcut: press 'P' to toggle detailed build inspect ──
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'p' || e.key === 'P') {
-                e.preventDefault();
-                setInspectingPlayer((curr) => {
-                    if (curr) return null;
-                    const m = currentDisplayMatch;
-                    const you = m?.blueTeam?.players?.find((p) => p.isYou) || m?.redTeam?.players?.find((p) => p.isYou);
-                    return you || m?.blueTeam?.players?.[0] || null;
-                });
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentDisplayMatch]);
 
     const handleSearch = (e) => {
         e.preventDefault();
-        if (searchName.trim()) {
-            checkLiveGame(searchName.trim(), region);
-        }
+        searchLiveGame();
     };
 
     return (
         <div className="mx-auto max-w-7xl px-4 py-8">
-            {/* Page Header */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            {/* Header */}
+            <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-6">
                 <div>
-                    <div className="flex items-center gap-2">
-                        <Radio size={24} className="text-accent animate-pulse" />
-                        <h1 className="font-display text-4xl font-bold tracking-tighter drop-shadow-[0_6px_28px_rgba(94,225,255,.3)] sm:text-5xl">
-                            <span className="text-shine">Live</span> <span className="text-accent-shine">Game.</span>
+                    <div className="flex items-center gap-2.5">
+                        <Radio size={26} className="text-accent animate-pulse" />
+                        <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+                            <span className="text-shine">Live</span> <span className="text-accent-shine">Spectator.</span>
                         </h1>
                     </div>
-                    <p className="mt-1 text-sm text-white/50">
-                        Date în timp real direct din Riot Spectator API via Backend.
+                    <p className="mt-1.5 text-sm text-white/50">
+                        Real-time active game spectator directly from Riot API. Split-team view with full runes and match stats.
                     </p>
                 </div>
 
-                {/* Quick Search for any player's live game */}
-                <form onSubmit={handleSearch} className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] p-1.5 pl-3 focus-within:border-accent/50">
-                    <Search size={15} className="text-white/40" />
-                    <input value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Verifică Riot ID live (Nume#TAG)"
-                           className="w-52 bg-transparent text-sm outline-none placeholder:text-white/35" />
-                    <RegionSelect value={region} onChange={(r) => { setRegion(r); loadFeatured(r); }} options={REGION_LIST} />
-                    <button type="submit" disabled={loadingUserMatch}
-                            className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent hover:text-ink disabled:opacity-50">
-                        {loadingUserMatch ? <Loader2 size={14} className="animate-spin" /> : 'Verifică Live'}
+                {/* Quick chip for logged-in / active user */}
+                {summoner?.name && (
+                    <button
+                        onClick={() => {
+                            setSearchName(summoner.name);
+                            setRegion(summoner.region || 'EUNE');
+                            searchLiveGame(summoner.name, summoner.region || 'EUNE');
+                        }}
+                        className="flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-xs font-semibold text-accent transition hover:bg-accent hover:text-ink shadow-sm"
+                    >
+                        <Play size={13} />
+                        <span>Check My Game ({summoner.name})</span>
+                    </button>
+                )}
+            </div>
+
+            {/* Centered Search Hero Bar */}
+            <div className="mb-8 mx-auto max-w-2xl">
+                <form onSubmit={handleSearch}
+                      className="flex items-center gap-2 rounded-2xl border border-white/[0.12] bg-white/[0.04] p-2 pl-4 shadow-xl backdrop-blur-md transition focus-within:border-accent/60 focus-within:shadow-[0_0_30px_rgba(94,225,255,0.15)]">
+                    <Search size={18} className="text-white/40 shrink-0" />
+                    <input
+                        value={searchName}
+                        onChange={(e) => setSearchName(e.target.value)}
+                        placeholder="Search player's Riot ID (e.g. Lucaaaa#EUNE or Caps#EUW)"
+                        className="min-w-0 flex-1 bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/35"
+                    />
+                    <RegionSelect value={region} onChange={setRegion} options={REGION_LIST} />
+                    <button
+                        type="submit"
+                        disabled={loading || !searchName.trim()}
+                        className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-ink shadow-[0_0_20px_rgba(94,225,255,0.4)] transition hover:bg-white active:scale-95 disabled:opacity-40"
+                    >
+                        {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                        <span>Check Live Game</span>
                     </button>
                 </form>
             </div>
 
-            {/* ── TOP SECTION: User Live Status / Champ Select ── */}
-            <div className="mb-8">
-                {loadingUserMatch ? (
-                    <div className="mb-4 flex items-center gap-3 rounded-2xl border border-accent/20 bg-accent/[0.04] p-4 text-white">
-                        <Loader2 className="animate-spin text-accent shrink-0" size={20} />
-                        <div>
-                            <p className="text-sm font-semibold">Se interoghează Riot Spectator API...</p>
-                            <p className="text-xs text-white/40">Se verifică dacă există un meci activ pe serverul {region}.</p>
-                        </div>
-                    </div>
-                ) : userMatch ? (
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3.5">
-                        <div className="flex items-center gap-3">
-                            <span className="h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_12px_#34d399] animate-pulse" />
-                            <div>
-                                <p className="text-sm font-bold text-white flex items-center gap-2">
-                                    {summoner?.name || searchName}
-                                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 uppercase">
-                                        În Meci Activ ({userMatch.mode || 'Ranked'})
-                                    </span>
-                                </p>
-                                <p className="text-xs text-white/50">
-                                    {userMatch.region} · {userMatch.phase === 'champ_select' ? 'Champ Select' : `${Math.floor((userMatch.gameTimeSeconds || 0) / 60)} min în joc`}
-                                </p>
-                            </div>
-                        </div>
-
-                        <button onClick={() => checkLiveGame(summoner?.name || searchName, region)}
-                                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white transition">
-                            <RefreshCw size={13} className={loadingUserMatch ? 'animate-spin' : ''} /> Reîmprospătează
-                        </button>
-                    </div>
-                ) : summoner ? (
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/[0.05] text-white/40 font-bold">
-                                {summoner.name[0].toUpperCase()}
-                            </div>
-                            <div>
-                                <p className="text-sm font-semibold text-white flex items-center gap-2">
-                                    {summoner.name}
-                                    <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/60">
-                                        Conectat
-                                    </span>
-                                </p>
-                                <p className="text-xs text-white/40">
-                                    {userMatchChecked ? 'Nu se află într-un meci activ în acest moment.' : 'Gata de verificare Spectator API.'}
-                                </p>
-                            </div>
-                        </div>
-
-                        <button onClick={() => checkLiveGame(summoner.name, summoner.region)}
-                                className="flex items-center gap-1.5 rounded-xl border border-accent/30 bg-accent/10 px-3.5 py-1.5 text-xs font-semibold text-accent hover:bg-accent hover:text-ink transition">
-                            <RefreshCw size={13} className={loadingUserMatch ? 'animate-spin' : ''} /> Verifică Live Game
-                        </button>
-                    </div>
-                ) : (
-                    <div className="mb-4 flex items-center justify-between rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-4 text-center">
-                        <div className="flex items-center gap-3 text-left">
-                            <AlertCircle size={20} className="text-accent shrink-0" />
-                            <div>
-                                <p className="text-sm font-semibold text-white">Niciun profil activ căutat</p>
-                                <p className="text-xs text-white/45">Introdu un Riot ID (Nume#TAG) în caseta de mai sus pentru a verifica dacă se află în meci live.</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* The Main Live Game Board */}
-                {currentDisplayMatch ? (
-                    <LiveGameView match={currentDisplayMatch}
-                                  assets={assets}
-                                  onInspectPlayer={setInspectingPlayer}
-                                  onInspectRunes={setInspectingRunePlayer} />
-                ) : (
-                    <Glass className="p-8 text-center border-dashed border-white/15">
-                        <Clock size={36} className="mx-auto text-white/20 mb-3" />
-                        <h3 className="font-display text-lg font-bold text-white">Așteptare meci live din backend</h3>
-                        <p className="text-sm text-white/45 max-w-md mx-auto mt-1">
-                            Când un jucător intră într-un meci sau când backend-ul livrează datele de spectator, tabla completă de joc (Champ Select, Build & Rune) va fi afișată aici automat.
-                        </p>
-                    </Glass>
-                )}
-            </div>
-
-            {/* ── BOTTOM SECTION: Apex High-ELO Live Matches ── */}
-            <div>
-                <div className="mb-3 flex items-center justify-between border-b border-white/[0.08] pb-3">
-                    <div className="flex items-center gap-2">
-                        <Shield size={18} className="text-amber-400" />
-                        <h2 className="font-display text-lg font-bold text-white tracking-tight">
-                            Meciuri Live de Top (Challenger & Grandmaster)
-                        </h2>
-                    </div>
-                    <span className="text-xs text-white/40">
-                        {loadingFeatured ? 'Se încarcă meciuri...' : `${featuredMatches.length} meciuri active pe ${region}`}
-                    </span>
+            {/* Live Match Results */}
+            {loading && !liveMatch ? (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-accent/20 bg-accent/[0.04] p-12 text-center">
+                    <Loader2 className="animate-spin text-accent" size={32} />
+                    <h3 className="font-display text-lg font-bold text-white">Checking Riot Spectator API...</h3>
+                    <p className="text-xs text-white/50 max-w-md">
+                        Fetching live active game for <strong className="text-white">{searchedId || searchName}</strong> on server <strong className="text-accent">{searchedRegion || region}</strong>.
+                    </p>
                 </div>
+            ) : liveMatch ? (
+                <div className="space-y-4">
+                    <LiveGameView
+                        match={liveMatch}
+                        assets={assets}
+                        searchedQuery={searchedId}
+                        onInspectPlayer={setInspectingPlayer}
+                        onInspectRunes={setInspectingRunePlayer}
+                        onRefresh={() => searchLiveGame(searchedId, searchedRegion)}
+                        isRefreshing={loading}
+                    />
+                </div>
+            ) : hasSearched ? (
+                <Glass className="p-10 text-center border-dashed border-white/15">
+                    <AlertCircle size={36} className="mx-auto text-amber-400 mb-3" />
+                    <h3 className="font-display text-xl font-bold text-white">
+                        {error ? 'Unable to Fetch Live Game' : 'No Active Game Found'}
+                    </h3>
+                    <p className="text-sm text-white/55 max-w-md mx-auto mt-2">
+                        {error
+                            ? error
+                            : <>Player <strong className="text-white font-semibold">{searchedId}</strong> ({searchedRegion}) is not currently in an active game. Matches appear once the loading screen starts.</>
+                        }
+                    </p>
+                    <div className="mt-5 flex justify-center gap-3">
+                        <button
+                            onClick={() => searchLiveGame(searchedId, searchedRegion)}
+                            className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.05] px-4 py-2 text-xs font-semibold text-white hover:bg-white/10 transition"
+                        >
+                            <RefreshCw size={13} />
+                            <span>Try Again</span>
+                        </button>
+                    </div>
+                </Glass>
+            ) : (
+                <Glass className="p-12 text-center border-dashed border-white/15 max-w-2xl mx-auto">
+                    <Clock size={40} className="mx-auto text-white/20 mb-3" />
+                    <h3 className="font-display text-xl font-bold text-white">Enter a Riot ID to Spectate</h3>
+                    <p className="text-sm text-white/45 max-w-md mx-auto mt-2 leading-relaxed">
+                        To save API requests and prevent rate-limiting, live game queries are loaded lazily on demand.
+                        Enter any player currently in a League of Legends match above (e.g. <span className="text-accent font-semibold">Lucaaaa#EUNE</span>) to inspect their live runes, spells, and team matchup in split view.
+                    </p>
+                </Glass>
+            )}
 
-                {loadingFeatured ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <div className="skeleton h-36 rounded-2xl" />
-                        <div className="skeleton h-36 rounded-2xl" />
-                        <div className="skeleton h-36 rounded-2xl" />
-                    </div>
-                ) : featuredMatches.length > 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {featuredMatches.map((m, idx) => (
-                            <ApexMatchCard key={m.id || idx} match={m}
-                                           isSelected={currentDisplayMatch?.id === m.id}
-                                           onSelect={() => {
-                                               setSelectedFeaturedMatch(m);
-                                               window.scrollTo({ top: 0, behavior: 'smooth' });
-                                           }} />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
-                        <p className="text-sm text-white/60">
-                            Niciun meci featured primit momentan de la endpoint-ul <code className="text-accent bg-white/10 px-1.5 py-0.5 rounded text-xs">GET /v1/live/featured?region={region}</code>.
-                        </p>
-                        <p className="text-xs text-white/35 mt-1">
-                            Odată ce colegul tău adaugă controller-ul pe backend, meciurile active vor fi preluate automat aici.
-                        </p>
-                    </div>
-                )}
-            </div>
-
-            {/* Player Details & Build Modal */}
+            {/* Player Details Modal */}
             {inspectingPlayer && (
-                <PlayerModal player={inspectingPlayer}
-                             onClose={() => setInspectingPlayer(null)}
-                             onInspectRunes={setInspectingRunePlayer}
-                             onSearchProfile={(p) => onSearch(`${p.name}#${p.tag}`, region)} />
+                <PlayerModal
+                    player={inspectingPlayer}
+                    onClose={() => setInspectingPlayer(null)}
+                    onInspectRunes={setInspectingRunePlayer}
+                    onSearchProfile={(p) => onSearch(`${p.name}#${p.tag}`, searchedRegion || region)}
+                />
             )}
 
             {/* Full Rune Page Modal */}
             {inspectingRunePlayer && (
-                <RunePageModal player={inspectingRunePlayer}
-                               onClose={() => setInspectingRunePlayer(null)} />
+                <RunePageModal
+                    player={inspectingRunePlayer}
+                    onClose={() => setInspectingRunePlayer(null)}
+                />
             )}
         </div>
     );

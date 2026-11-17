@@ -98,7 +98,8 @@ export default function Navbar({ page, onNavigate, onSearch }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const submit = (e) => { e.preventDefault(); if (q.trim()) { onSearch(q.trim(), 'EUW'); setQ(''); } };
+  const searchRegion = activeSummoner?.region || 'EUW';
+  const submit = (e) => { e.preventDefault(); if (q.trim()) { onSearch(q.trim(), searchRegion); setQ(''); } };
 
   return (
       <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_8px_32px_-12px_rgba(0,0,0,.5)] backdrop-blur-(--nav-blur) backdrop-saturate-150">
@@ -125,7 +126,7 @@ export default function Navbar({ page, onNavigate, onSearch }) {
             <label htmlFor="nav-search" className="sr-only">Search Riot ID</label>
             <input id="nav-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Riot ID"
                    className="w-44 bg-transparent text-sm outline-none placeholder:text-white/35" />
-            <kbd className="rounded border border-white/10 px-1.5 font-sans text-[10px] text-white/35">EUW</kbd>
+            <kbd className="rounded border border-white/10 px-1.5 font-sans text-[10px] text-white/35">{searchRegion}</kbd>
           </form>
 
           {/* Navigation Bar: Home, Live Game, Tier Lists, Leaderboards, and PROFILE as the last item! */}

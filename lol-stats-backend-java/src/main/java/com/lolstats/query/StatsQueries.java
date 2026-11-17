@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
 
@@ -319,7 +321,42 @@ public class StatsQueries {
     }
 
     // ---------- tier list ----------
+    // Tier list cache: the result only changes when new matches are imported, and the query set is the
+    // slowest thing the site runs. Same filter within TIER_LIST_TTL_MS -> served from memory. Concurrent
+    // callers for the same key share one computation instead of hitting the database in parallel.
+    private static final long TIER_LIST_TTL_MS = 60_000;
+    private record TierKey(Filter f, int minGames) {}
+    private record TierEntry(long at, CompletableFuture<Map<String, Object>> value) {}
+    private final Map<TierKey, TierEntry> tierCache = new ConcurrentHashMap<>();
+
     public Map<String, Object> tierList(Filter f, int minGames) {
+        TierKey key = new TierKey(f, minGames);
+        long now = System.currentTimeMillis();
+        boolean[] owner = {false};
+        TierEntry e = tierCache.compute(key, (k, old) -> {
+            if (old != null && now - old.at() < TIER_LIST_TTL_MS && !old.value().isCompletedExceptionally()) return old;
+            owner[0] = true;
+            return new TierEntry(now, new CompletableFuture<>());
+        });
+        if (owner[0]) {
+            try {
+                e.value().complete(computeTierList(f, minGames));
+            } catch (RuntimeException ex) {
+                e.value().completeExceptionally(ex);
+                tierCache.remove(key, e);
+                throw ex;
+            }
+            if (tierCache.size() > 200) tierCache.entrySet().removeIf(x -> now - x.getValue().at() >= TIER_LIST_TTL_MS);
+        }
+        try {
+            return e.value().join();
+        } catch (java.util.concurrent.CompletionException ex) {
+            if (ex.getCause() instanceof RuntimeException) throw (RuntimeException) ex.getCause();
+            throw ex;
+        }
+    }
+
+    private Map<String, Object> computeTierList(Filter f, int minGames) {
         int total = totalMatches(f);
 
         P p = new P();

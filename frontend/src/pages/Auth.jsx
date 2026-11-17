@@ -71,12 +71,12 @@ export default function Auth({ onLoginSuccess }) {
             if (res.status === 'NEEDS_VERIFICATION') {
                 setMode('verify');
                 setCountdown(30);
-                setInfo('Contul tău nu este încă verificat. Ți-am trimis un cod nou pe email.');
+                setInfo('Your account is not verified yet. We sent a new verification code to your email.');
                 return;
             }
             finish(res.user);
         } catch (err) {
-            setError(err.message || 'Eroare la autentificare.');
+            setError(err.message || 'Authentication failed. Please check your credentials.');
         } finally {
             setLoading(false);
         }
@@ -89,7 +89,7 @@ export default function Auth({ onLoginSuccess }) {
         setInfo('');
 
         if (password !== confirmPassword) {
-            setError('Parolele introduse nu se potrivesc.');
+            setError('Passwords do not match.');
             return;
         }
 
@@ -106,9 +106,9 @@ export default function Auth({ onLoginSuccess }) {
             setMode('verify');
             setCountdown(30);
             setOtp(['', '', '', '', '', '']);
-            setInfo(`Am trimis codul de verificare la adresa ${email.trim()}`);
+            setInfo(`Verification code sent to ${email.trim()}`);
         } catch (err) {
-            setError(err.message || 'Eroare la crearea contului.');
+            setError(err.message || 'Registration failed. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -121,12 +121,12 @@ export default function Auth({ onLoginSuccess }) {
         newOtp[index] = value;
         setOtp(newOtp);
 
-        // Auto-advance la următoarea căsuță
+        // Auto-advance to next box
         if (value && index < 5) {
             otpRefs.current[index + 1]?.focus();
         }
 
-        // Dacă s-au completat toate 6 cifrele, trimite automat
+        // If all 6 digits entered, submit automatically
         const fullCode = newOtp.join('');
         if (fullCode.length === 6) {
             submitVerification(fullCode);
@@ -152,7 +152,7 @@ export default function Auth({ onLoginSuccess }) {
     const submitVerification = async (codeToVerify) => {
         const code = codeToVerify || otp.join('');
         if (code.length < 6) {
-            setError('Introdu toate cele 6 cifre ale codului primit pe email.');
+            setError('Please enter all 6 digits of the verification code.');
             return;
         }
         setError('');
@@ -161,7 +161,7 @@ export default function Auth({ onLoginSuccess }) {
             const user = await verifyEmailAndLogin({ email: email.trim(), code });
             finish(user);
         } catch (err) {
-            setError(err.message || 'Cod invalid sau expirat.');
+            setError(err.message || 'Invalid or expired verification code.');
         } finally {
             setLoading(false);
         }
@@ -174,14 +174,11 @@ export default function Auth({ onLoginSuccess }) {
         setInfo('');
         setLoading(true);
         try {
-            const res = await resendVerificationEmail({ email: email.trim() });
-            if (res.code) {
-                setLastSentCode(res.code);
-            }
+            await resendVerificationEmail({ email: email.trim() });
             setCountdown(30);
-            setInfo('Un nou cod de verificare a fost expediat pe email-ul tău.');
+            setInfo('A new verification code has been dispatched to your email.');
         } catch (err) {
-            setError('Nu s-a putut retrimite emailul.');
+            setError('Could not resend email. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -196,21 +193,21 @@ export default function Auth({ onLoginSuccess }) {
                 <div className="relative mb-6 text-center">
                     <div className="mx-auto mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-xs font-semibold uppercase tracking-wider text-accent">
                         <Sparkles size={13} />
-                        <span>Autentificare Securizată</span>
+                        <span>Secure Authentication</span>
                     </div>
                     <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                        {mode === 'verify' ? 'Verificare Email' : mode === 'login' ? 'Intră în cont' : 'Creează un cont'}
+                        {mode === 'verify' ? 'Email Verification' : mode === 'login' ? 'Sign In' : 'Create an Account'}
                     </h1>
                     <p className="mt-1 text-sm text-white/55">
                         {mode === 'verify'
-                            ? `Introdu codul de 6 cifre trimis pe email pentru a-ți activa contul.`
+                            ? `Enter the 6-digit verification code sent to your email to activate your account.`
                             : mode === 'login'
-                            ? 'Conectează-te cu emailul și parola ta pentru a accesa profilul.'
-                            : 'Înregistrează-te cu email și parolă pentru a-ți salva istoricul și statisticile.'}
+                            ? 'Sign in with your email and password to access your profile.'
+                            : 'Sign up with email and password to track your match history and stats.'}
                     </p>
                 </div>
 
-                {/* Tab switcher între Login și Register (ascuns în ecranul de verify) */}
+                {/* Tab switcher between Login and Register */}
                 {mode !== 'verify' && (
                     <div className="mb-6 flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-1">
                         <button
@@ -223,7 +220,7 @@ export default function Auth({ onLoginSuccess }) {
                             }`}
                         >
                             <LogIn size={14} />
-                            <span>Conectare</span>
+                            <span>Sign In</span>
                         </button>
 
                         <button
@@ -236,7 +233,7 @@ export default function Auth({ onLoginSuccess }) {
                             }`}
                         >
                             <UserPlus size={14} />
-                            <span>Înregistrare</span>
+                            <span>Create Account</span>
                         </button>
                     </div>
                 )}
@@ -257,18 +254,18 @@ export default function Auth({ onLoginSuccess }) {
                     </div>
                 )}
 
-                {/* ==================== 1. FORMULAR LOGIN ==================== */}
+                {/* ==================== 1. LOGIN FORM ==================== */}
                 {mode === 'login' && (
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div>
-                            <label className="mb-1 block text-xs font-medium text-white/70">Adresă de Email</label>
+                            <label className="mb-1 block text-xs font-medium text-white/70">Email Address</label>
                             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                 <Mail size={15} className="text-white/40" />
                                 <input
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="exemplu@email.com"
+                                    placeholder="your@email.com"
                                     className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                     required
                                     autoFocus
@@ -277,7 +274,7 @@ export default function Auth({ onLoginSuccess }) {
                         </div>
 
                         <div>
-                            <label className="mb-1 block text-xs font-medium text-white/70">Parolă</label>
+                            <label className="mb-1 block text-xs font-medium text-white/70">Password</label>
                             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                 <Lock size={15} className="text-white/40" />
                                 <input
@@ -297,7 +294,7 @@ export default function Auth({ onLoginSuccess }) {
                             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-bold text-ink shadow-[0_0_25px_-5px_rgba(94,225,255,0.6)] transition hover:bg-white active:scale-[0.98] disabled:opacity-50"
                         >
                             <LogIn size={15} />
-                            <span>{loading ? 'Se conectează...' : 'Conectare'}</span>
+                            <span>{loading ? 'Signing in...' : 'Sign In'}</span>
                         </button>
 
                         <div className="text-center pt-2">
@@ -306,24 +303,24 @@ export default function Auth({ onLoginSuccess }) {
                                 onClick={() => { setMode('register'); setError(''); }}
                                 className="text-xs text-white/50 hover:text-accent transition"
                             >
-                                Nu ai încă un cont? <strong className="font-semibold text-white">Înregistrează-te</strong>
+                                Don&apos;t have an account yet? <strong className="font-semibold text-white">Create one</strong>
                             </button>
                         </div>
                     </form>
                 )}
 
-                {/* ==================== 2. FORMULAR REGISTER ==================== */}
+                {/* ==================== 2. REGISTER FORM ==================== */}
                 {mode === 'register' && (
                     <form onSubmit={handleRegister} className="space-y-4">
                         <div>
-                            <label className="mb-1 block text-xs font-medium text-white/70">Nume utilizator</label>
+                            <label className="mb-1 block text-xs font-medium text-white/70">Username</label>
                             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                 <User size={15} className="text-white/40" />
                                 <input
                                     type="text"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="Numele tău"
+                                    placeholder="Your username"
                                     className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                     required
                                     autoFocus
@@ -333,7 +330,7 @@ export default function Auth({ onLoginSuccess }) {
 
                         <div>
                             <label className="mb-1 block text-xs font-medium text-white/70">
-                                Email (unde vei primi codul de verificare)
+                                Email (where you will receive the verification code)
                             </label>
                             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                 <Mail size={15} className="text-white/40" />
@@ -341,7 +338,7 @@ export default function Auth({ onLoginSuccess }) {
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="exemplu@email.com"
+                                    placeholder="your@email.com"
                                     className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                     required
                                 />
@@ -350,14 +347,14 @@ export default function Auth({ onLoginSuccess }) {
 
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                                <label className="mb-1 block text-xs font-medium text-white/70">Parolă</label>
+                                <label className="mb-1 block text-xs font-medium text-white/70">Password</label>
                                 <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                     <Lock size={15} className="text-white/40" />
                                     <input
                                         type="password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        placeholder="Min. 6 caractere"
+                                        placeholder="Min. 6 characters"
                                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                         required
                                     />
@@ -365,14 +362,14 @@ export default function Auth({ onLoginSuccess }) {
                             </div>
 
                             <div>
-                                <label className="mb-1 block text-xs font-medium text-white/70">Confirmare parolă</label>
+                                <label className="mb-1 block text-xs font-medium text-white/70">Confirm Password</label>
                                 <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] p-2.5 pl-3 focus-within:border-accent/60">
                                     <Lock size={15} className="text-white/40" />
                                     <input
                                         type="password"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
-                                        placeholder="Repetă parola"
+                                        placeholder="Repeat password"
                                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/30"
                                         required
                                     />
@@ -384,14 +381,14 @@ export default function Auth({ onLoginSuccess }) {
                         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
                             <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-accent">
                                 <Link2 size={13} />
-                                <span>Asociere Riot ID opțională (poți completa și ulterior)</span>
+                                <span>Optional Riot ID Linking (can also be done later)</span>
                             </label>
                             <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-1.5 pl-2.5">
                                 <input
                                     type="text"
                                     value={riotId}
                                     onChange={(e) => setRiotId(e.target.value)}
-                                    placeholder="ex: Caps#EUW sau Faker#KR1"
+                                    placeholder="e.g. Caps#EUW or Faker#KR1"
                                     className="w-full bg-transparent text-xs text-white outline-none placeholder:text-white/30"
                                 />
                                 <RegionSelect value={region} onChange={setRegion} options={REGION_LIST} />
@@ -404,7 +401,7 @@ export default function Auth({ onLoginSuccess }) {
                             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-bold text-ink shadow-[0_0_25px_-5px_rgba(94,225,255,0.6)] transition hover:bg-white active:scale-[0.98] disabled:opacity-50"
                         >
                             <Send size={15} />
-                            <span>{loading ? 'Se trimite codul...' : 'Creează Cont & Trimite Cod'}</span>
+                            <span>{loading ? 'Sending code...' : 'Create Account & Send Code'}</span>
                             <ArrowRight size={15} />
                         </button>
 
@@ -414,27 +411,27 @@ export default function Auth({ onLoginSuccess }) {
                                 onClick={() => { setMode('login'); setError(''); }}
                                 className="text-xs text-white/50 hover:text-accent transition"
                             >
-                                Ai deja un cont? <strong className="font-semibold text-white">Conectează-te</strong>
+                                Already have an account? <strong className="font-semibold text-white">Sign In</strong>
                             </button>
                         </div>
                     </form>
                 )}
 
-                {/* ==================== 3. ECRAN VERIFICARE EMAIL (OTP) ==================== */}
+                {/* ==================== 3. EMAIL VERIFICATION SCREEN (OTP) ==================== */}
                 {mode === 'verify' && (
                     <div className="space-y-6">
                         <div className="rounded-2xl border border-accent/25 bg-accent/5 p-4 text-center">
                             <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-accent/20 text-accent ring-1 ring-accent/30">
                                 <Mail size={24} />
                             </div>
-                            <p className="text-xs text-white/60">Am trimis un cod de verificare la:</p>
+                            <p className="text-xs text-white/60">We sent a verification code to:</p>
                             <p className="font-semibold text-white text-sm">{email}</p>
                         </div>
 
                         {/* 6 Digit Input Boxes */}
                         <div>
                             <label className="mb-2 block text-center text-xs font-medium text-white/70">
-                                Introdu codul de 6 cifre
+                                Enter the 6-digit code
                             </label>
                             <div className="flex justify-center gap-2 sm:gap-3" onPaste={handleOtpPaste}>
                                 {otp.map((digit, i) => (
@@ -461,7 +458,7 @@ export default function Auth({ onLoginSuccess }) {
                             className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm font-bold text-ink shadow-[0_0_25px_-5px_rgba(94,225,255,0.6)] transition hover:bg-white active:scale-[0.98] disabled:opacity-50"
                         >
                             <CheckCircle2 size={16} />
-                            <span>{loading ? 'Se verifică...' : 'Verifică & Intră în Cont'}</span>
+                            <span>{loading ? 'Verifying...' : 'Verify & Sign In'}</span>
                         </button>
 
                         <div className="flex items-center justify-between border-t border-white/10 pt-3 text-xs">
@@ -470,7 +467,7 @@ export default function Auth({ onLoginSuccess }) {
                                 onClick={() => { setMode('register'); setError(''); }}
                                 className="text-white/50 hover:text-white"
                             >
-                                Schimbă emailul
+                                Change email
                             </button>
 
                             <button
@@ -481,7 +478,7 @@ export default function Auth({ onLoginSuccess }) {
                             >
                                 <RotateCcw size={12} />
                                 <span>
-                                    {countdown > 0 ? `Retrimite în ${countdown}s` : 'Retrimite codul'}
+                                    {countdown > 0 ? `Resend in ${countdown}s` : 'Resend code'}
                                 </span>
                             </button>
                         </div>
@@ -491,7 +488,7 @@ export default function Auth({ onLoginSuccess }) {
                 {/* Footer security note */}
                 <div className="mt-6 flex items-center justify-center gap-2 text-center text-[11px] text-white/35">
                     <Shield size={12} className="text-accent/60" />
-                    <span>Conexiune criptată · Verificare securizată prin email</span>
+                    <span>Encrypted Connection · Secure Email Verification</span>
                 </div>
             </Glass>
         </div>

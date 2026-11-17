@@ -12,8 +12,27 @@ const ROLE = { top: 'Top', jungle: 'Jungle', mid: 'Mid', adc: 'ADC', support: 'S
 // "DIAMOND" -> "Diamond"
 const cap = (s) => (s ? s[0] + s.slice(1).toLowerCase() : s);
 
+// GET dedupe + short cache. The same request in flight is shared (StrictMode in dev, several
+// components asking at once). Slow-changing data (tier list, leaderboard, static data) is kept for a while.
+const inflight = new Map();
+const cache = new Map(); // path -> { at, body }
+const CACHE_TTL_MS = 60_000;
+const CACHEABLE = ['/tier-list', '/leaderboard', '/items', '/runes', '/summoner-spells', '/patches', '/champions'];
+const isCacheable = (path) => CACHEABLE.some((p) => path === p || path.startsWith(`${p}?`) || path.startsWith(`${p}/`));
+
 // Sună backend-ul. Întoarce { data, meta } sau aruncă eroare.
-async function api(path) {
+function api(path) {
+    const hit = cache.get(path);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return Promise.resolve(hit.body);
+    if (inflight.has(path)) return inflight.get(path);
+    const p = apiFetch(path)
+        .then((body) => { if (isCacheable(path)) cache.set(path, { at: Date.now(), body }); return body; })
+        .finally(() => inflight.delete(path));
+    inflight.set(path, p);
+    return p;
+}
+
+async function apiFetch(path) {
     let res;
     const t0 = performance.now();
     try {
@@ -26,7 +45,12 @@ async function api(path) {
     const body = await res.json();
     // Timing of every backend call, visible in the browser console (F12)
     console.log(`[api] GET ${path.split('?')[0]} -> ${res.status} in ${Math.round(performance.now() - t0)} ms`);
-    if (!res.ok) throw new Error(body.error?.message ?? 'Request failed');
+    if (!res.ok) {
+        const err = new Error(body.error?.message ?? 'Request failed');
+        err.status = res.status;
+        err.code = body.error?.code; // e.g. NOT_IN_GAME, PLAYER_NOT_FOUND
+        throw err;
+    }
     return body;
 }
 
@@ -74,16 +98,23 @@ const CHAMP_ID = {
     "K'Sante": 'KSante', "Rek'Sai": 'RekSai', "Kog'Maw": 'KogMaw',
 };
 // Works for any champion (name like "Lee Sin" or id like "LeeSin"). The tiles URL needs no patch version.
+// Champion name ("Lee Sin", "Kai'Sa") or id -> Data Dragon id ("LeeSin", "Kaisa"). Used for /champions/:id links.
+export const champId = (nameOrId) => CHAMP_ID[nameOrId] ?? String(nameOrId).replace(/[^A-Za-z0-9]/g, '');
 export const champIcon = (nameOrId) => {
-    const id = CHAMP_ID[nameOrId] ?? String(nameOrId).replace(/[^A-Za-z0-9]/g, '');
+    const id = champId(nameOrId);
     return `https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${id}_0.jpg`;
 };
 
 // Top champions of the current meta (Home). Throws when the backend fails, the caller shows the error.
-export async function getMetaSnapshot() {
-    // Ask for champions with a real sample first; only if the DB is that small, accept tiny samples (they get a "N games" label in the UI)
-    let { data } = await api('/tier-list?tier=all&minGames=20&limit=8');
-    if (!data.length) ({ data } = await api('/tier-list?tier=all&minGames=1&limit=8'));
+// One tier-list request feeds both the meta snapshot and "most banned" on Home (the backend query is the slow part).
+const homeTierList = () => api('/tier-list?tier=all&minGames=1&limit=500').then((r) => r.data);
+
+// Meta snapshot only shows champions with a reliable sample (games in that role, all ranks).
+export const META_MIN_GAMES = 100;
+
+export async function getMetaSnapshot(limit = 8) {
+    const rows = await homeTierList(); // sorted by score (Wilson lower bound) by the backend
+    const data = rows.filter((r) => r.games >= META_MIN_GAMES).slice(0, limit);
     return data.map((r) => ({
         id: r.championId,          // Data Dragon id, used for /champions/:id
         champ: r.name,
@@ -97,7 +128,7 @@ export async function getMetaSnapshot() {
 
 // Most banned champions (one row per champion, the tier list repeats a champion once per role).
 export async function getMostBanned(limit = 8) {
-    const { data } = await api('/tier-list?tier=all&minGames=1&sort=banRate&limit=100');
+    const data = [...(await homeTierList())].sort((a, b) => (b.banRate ?? 0) - (a.banRate ?? 0));
     const seen = new Set();
     const out = [];
     for (const r of data) {
@@ -294,10 +325,8 @@ export async function getPlayerLiveGame(riotId, region = 'EUW') {
         const res = await api(path);
         return res?.data ?? null;
     } catch (err) {
-        // 404 / NOT_IN_GAME means player is not playing right now
-        if (err.message?.toLowerCase().includes('not') || err.message?.includes('404')) {
-            return null;
-        }
+        // Only NOT_IN_GAME means "not playing right now". Other errors (PLAYER_NOT_FOUND...) are shown.
+        if (err.code === 'NOT_IN_GAME') return null;
         throw err;
     }
 }
