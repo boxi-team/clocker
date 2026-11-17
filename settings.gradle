@@ -1,2 +1,4 @@
 rootProject.name = 'clocker2'
 include 'lol-stats-backend-java'
+
+include 'crawler'
