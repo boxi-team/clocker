@@ -28,6 +28,13 @@ public class StatsQueries {
     private static final int MIN_OPTION_GAMES = 50;
     private static final double MIN_OPTION_SHARE = 0.05;
     private static final int MAX_ALTERNATIVES = 2;
+    // Tier list: a role is shown for a champion only if it is at least this share of the champion's games,
+    // and at most MAX_ROLES_PER_CHAMP roles per champion. Hides off-meta picks such as Olaf top.
+    static final double MIN_ROLE_SHARE = 0.20;
+    static final int MAX_ROLES_PER_CHAMP = 2;
+    // Trinkets are free at the start (Stealth Ward), so they only split identical starting sets.
+    private static final String NO_TRINKETS =
+            "array_remove(array_remove(array_remove(array_remove(p.starting_items, 3340), 3363), 3364), 3330)";
 
     public StatsQueries(Db db, AppProps props) {
         this.db = db;
@@ -210,9 +217,9 @@ public class StatsQueries {
                 + "mode() WITHIN GROUP (ORDER BY skill_order) AS sequence, count(*)::int AS games, "
                 + "sum(win::int)::int AS wins FROM match_participants p WHERE " + w
                 + " AND p.skill_max_order IS NOT NULL GROUP BY skill_max_order " + top(5));
-        var starts = q(f, championKey, role, opponentKey, w -> "SELECT starting_items, count(*)::int AS games, "
-                + "sum(win::int)::int AS wins FROM match_participants p WHERE " + w
-                + " AND p.starting_items IS NOT NULL GROUP BY starting_items " + top(5));
+        var starts = q(f, championKey, role, opponentKey, w -> "SELECT " + NO_TRINKETS + " AS starting_items, "
+                + "count(*)::int AS games, sum(win::int)::int AS wins FROM match_participants p WHERE " + w
+                + " AND p.starting_items IS NOT NULL GROUP BY 1 " + top(5));
 
         List<Map<String, Object>> runeOut = new ArrayList<>();
         for (Map<String, Object> r : runes) {
@@ -359,14 +366,15 @@ public class StatsQueries {
     private Map<String, Object> computeTierList(Filter f, int minGames) {
         int total = totalMatches(f);
 
+        // All roles are read (even with a role filter) so each role's share of the champion's games is known.
         P p = new P();
         List<String> where = f.conditions(p, "p");
         where.add("p.role IS NOT NULL");
-        if (f.role() != null) where.add("p.role = " + p.add(f.role()));
-        List<Map<String, Object>> rows = db.rows(
+        List<Map<String, Object>> rows = mainRoles(db.rows(
                 "SELECT p.champion_id, p.role, count(*)::int AS games, sum(p.win::int)::int AS wins "
                         + "FROM match_participants p WHERE " + String.join(" AND ", where)
-                        + " GROUP BY p.champion_id, p.role HAVING count(*) >= " + p.add(minGames), p.args());
+                        + " GROUP BY p.champion_id, p.role", p.args()));
+        rows.removeIf(r -> Db.i(r, "games") < minGames || (f.role() != null && !f.role().equals(Db.s(r, "role"))));
 
         Map<String, Integer> slots = slotsByRole(f);
 
@@ -395,5 +403,25 @@ public class StatsQueries {
             out.add(m);
         }
         return obj("totalMatches", total, "rows", out);
+    }
+
+    /**
+     * Keeps each champion's main roles: share of the champion's games >= MIN_ROLE_SHARE, at most
+     * MAX_ROLES_PER_CHAMP roles, most played first. Rows need champion_id, role, games.
+     */
+    public static List<Map<String, Object>> mainRoles(List<Map<String, Object>> rows) {
+        Map<Integer, Integer> champGames = new HashMap<>();
+        for (Map<String, Object> r : rows) champGames.merge(Db.i(r, "champion_id"), Db.i(r, "games"), Integer::sum);
+        List<Map<String, Object>> sorted = new ArrayList<>(rows);
+        sorted.sort((a, b) -> Integer.compare(Db.i(b, "games"), Db.i(a, "games")));
+        Map<Integer, Integer> kept = new HashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> r : sorted) {
+            int champ = Db.i(r, "champion_id");
+            if (Db.i(r, "games") < MIN_ROLE_SHARE * champGames.get(champ)) continue;
+            if (kept.merge(champ, 1, Integer::sum) > MAX_ROLES_PER_CHAMP) continue;
+            out.add(r);
+        }
+        return out;
     }
 }

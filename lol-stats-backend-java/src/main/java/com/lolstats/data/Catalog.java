@@ -33,13 +33,18 @@ public class Catalog {
         return r == null ? null : Db.s(r, "version");
     }
 
-    /** "latest" -> major.minor of the newest synced patch (e.g. "15.21"); otherwise the given major.minor. */
+    /**
+     * "latest" -> major.minor of the two newest synced patches, comma separated (e.g. "16.23,16.22");
+     * otherwise the given major.minor. Two patches so the stats are not empty right after a new patch.
+     */
     public String resolveAnalyticsPatch(String p) {
         if (!"latest".equals(p)) return p;
-        String v = latestPatch();
-        if (v == null) throw AppException.dataNotReady();
-        String[] parts = v.split("\\.");
-        return parts[0] + "." + parts[1];
+        List<Map<String, Object>> rows = db.rows(
+                "SELECT DISTINCT split_part(version, '.', 1) || '.' || split_part(version, '.', 2) AS minor, "
+                        + "split_part(version, '.', 1)::int AS major_n, split_part(version, '.', 2)::int AS minor_n "
+                        + "FROM patches ORDER BY major_n DESC, minor_n DESC LIMIT 2");
+        if (rows.isEmpty()) throw AppException.dataNotReady();
+        return String.join(",", rows.stream().map(r -> Db.s(r, "minor")).toList());
     }
 
     /** "latest" -> newest synced Data Dragon version; otherwise the given full version. */

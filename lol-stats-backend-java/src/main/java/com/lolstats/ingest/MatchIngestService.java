@@ -88,7 +88,7 @@ public class MatchIngestService {
         }
         for (int s : new int[]{1, 2, 3}) maxed.add(SKILL_LETTER.get(s)); // incomplete: append by slot
         StringBuilder order = new StringBuilder();
-        for (int i = 0; i < Math.min(15, skills.size()); i++) order.append(SKILL_LETTER.get(skills.get(i)));
+        for (int i = 0; i < Math.min(18, skills.size()); i++) order.append(SKILL_LETTER.get(skills.get(i)));
         return new TimelineInfo(order.toString(), String.join(">", maxed), starting.stream().sorted().toList(), purchases);
     }
 
@@ -193,7 +193,10 @@ public class MatchIngestService {
                 for (int i = 0; i < 6; i++) slots.add(p.path("item" + i).asInt());
                 List<Integer> allItems = new ArrayList<>(slots);
                 allItems.add(p.path("item6").asInt());
-                Classified cls = ItemService.classify(slots, itemMap);
+                // Role quests: bot laners get boots in a separate slot (roleBoundItem), not in item0..item5.
+                List<Integer> withRoleItem = new ArrayList<>(slots);
+                withRoleItem.add(p.path("roleBoundItem").asInt(0));
+                Classified cls = ItemService.classify(withRoleItem, itemMap);
                 Runes runes = runesOf(p);
                 String puuid = p.path("puuid").asText();
                 TimelineInfo ti = tl == null ? null : parseTimeline(tl, puuid);

@@ -92,10 +92,11 @@ function LaneSelector({ value, onChange }) {
 }
 
 // ── Tier Cards view: ONLY S+, S, A (compact & scroll-free) ──
+// size = how many of the best-scored champions go in each tier (4 + 8 + 11 = top 23).
 const CARD_TIERS = [
-    { key: 'S+', label: 'S+', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' },
-    { key: 'S',  label: 'S',  color: '#5ee1ff', bg: 'rgba(94,225,255,0.10)', border: 'rgba(94,225,255,0.3)' },
-    { key: 'A',  label: 'A',  color: '#8b7bff', bg: 'rgba(139,123,255,0.10)', border: 'rgba(139,123,255,0.3)' },
+    { key: 'S+', label: 'S+', size: 4,  color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' },
+    { key: 'S',  label: 'S',  size: 8,  color: '#5ee1ff', bg: 'rgba(94,225,255,0.10)', border: 'rgba(94,225,255,0.3)' },
+    { key: 'A',  label: 'A',  size: 11, color: '#8b7bff', bg: 'rgba(139,123,255,0.10)', border: 'rgba(139,123,255,0.3)' },
 ];
 
 function TierCards({ params, set }) {
@@ -119,21 +120,15 @@ function TierCards({ params, set }) {
     // Filter out champions with under 10 games or under 43% win rate
     const rows = useMemo(() => rawRows.filter((r) => r.games >= 10 && r.winRate >= 0.43), [rawRows]);
 
-    // Group top champions into ONLY S+, S, A (max 12 champions per tier: 4 rows x 3 columns)
+    // Group top champions into ONLY S+, S, A: the best 4 in S+, the next 8 in S, the next 11 in A.
     const grouped = useMemo(() => {
         const sorted = [...rows].sort((a, b) => b.score - a.score);
-        const groups = CARD_TIERS.map((t) => ({ ...t, items: [] }));
-        if (sorted.length === 0) return groups;
-
-        // Distribute top champions into S+, S, A (up to 12 champions per tier)
-        const perTier = Math.min(12, Math.max(3, Math.ceil(sorted.length / 3)));
-        sorted.slice(0, perTier * 3).forEach((r, i) => {
-            const tierIdx = Math.floor(i / perTier);
-            if (tierIdx < 3) {
-                groups[tierIdx].items.push(r);
-            }
+        let start = 0;
+        return CARD_TIERS.map((t) => {
+            const items = sorted.slice(start, start + t.size);
+            start += t.size;
+            return { ...t, items };
         });
-        return groups;
     }, [rows]);
 
     return (

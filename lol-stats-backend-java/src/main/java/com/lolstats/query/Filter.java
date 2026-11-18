@@ -4,7 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Analytics filter. {@code tiers} null = all tiers, {@code region} null = all regions, {@code role} optional.
+ * Analytics filter. {@code patch} = one or more comma-separated minors, {@code tiers} null = all tiers,
+ * {@code region} null = all regions, {@code role} optional.
  */
 public record Filter(String patch, int queueId, List<String> tiers, String region, String role) {
 
@@ -25,7 +26,8 @@ public record Filter(String patch, int queueId, List<String> tiers, String regio
     /** Conditions shared by {@code matches} and {@code match_participants} (both carry these columns). */
     public List<String> conditions(P p, String a) {
         List<String> c = new ArrayList<>();
-        c.add(a + ".patch = " + p.add(patch));
+        // patch may list several minors ("16.23,16.22"), see Catalog.resolveAnalyticsPatch.
+        c.add(a + ".patch = ANY(string_to_array(" + p.add(patch) + ", ','))");
         c.add(a + ".queue_id = " + p.add(queueId));
         if (tiers != null) c.add(a + ".tier_bucket = ANY(string_to_array(" + p.add(String.join(",", tiers)) + ", ','))");
         if (region != null) c.add(a + ".region = " + p.add(region));

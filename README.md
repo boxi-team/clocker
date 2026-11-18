@@ -202,5 +202,4 @@ src/main/resources/db/migration   Flyway migrations (V1–V3)
 
 - Riot rate limiting follows the dev key limits (20 requests/second, 100 per 2 minutes), so a large crawl takes a while.
 - `docker-compose.yml` (local Postgres + Redis) remains only as an option for offline development; it is not needed with Supabase. Redis is not used yet.
-- `env.example` uses `DATABASE_URL`, but the app reads `DB_URL`, `DB_USER` and `DB_PASSWORD`. Use the latter.
-- The footer links to pages (About, Terms, Privacy) that are not built yet; the same goes for Live Game and Leaderboards.
+- The footer links to pages (About, Terms, Privacy) that are not built yet.

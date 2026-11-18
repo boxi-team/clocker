@@ -394,7 +394,8 @@ export default function Home({ onSearch, summoner }) {
 
     return (
         <>
-            <Stage blobs fade snap className="flex min-h-[calc(100svh-4.1rem)] flex-col justify-center px-4 pb-10">
+            {/* Full screen height: the hero starts under the fixed navbar (pt = navbar height), so the band below starts just off-screen. */}
+            <Stage blobs fade snap className="flex min-h-svh flex-col justify-center px-4 pb-10 pt-[4.1rem]">
                 <h1 className="animate-rise mb-10 text-center font-display text-6xl font-bold tracking-tighter sm:text-7xl">
                     <TypewriterTitle
                         main={titleMain}

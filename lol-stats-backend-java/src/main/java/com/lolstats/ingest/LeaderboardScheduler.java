@@ -7,12 +7,13 @@ import com.lolstats.config.AppProps;
 import com.lolstats.jobs.JobService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** On boot and then every 30 minutes, queues one leaderboard refresh job per configured region. */
+/**
+ * Once a day at 00:00 (Romania time), queues one leaderboard refresh job per configured region.
+ * No refresh on boot: the stored leaderboard stays valid, and a refresh ties up the Riot rate limit.
+ */
 @Component
 public class LeaderboardScheduler {
     private static final Logger log = LoggerFactory.getLogger(LeaderboardScheduler.class);
@@ -25,12 +26,7 @@ public class LeaderboardScheduler {
         this.props = props;
     }
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void onBoot() {
-        refresh();
-    }
-
-    @Scheduled(cron = "${lol.leaderboard-cron:0 */30 * * * *}")
+    @Scheduled(cron = "${lol.leaderboard-cron:0 0 0 * * *}", zone = "Europe/Bucharest")
     public void refresh() {
         if (!props.enableLeaderboard()) return;
         for (String region : props.leaderboardRegionList()) {

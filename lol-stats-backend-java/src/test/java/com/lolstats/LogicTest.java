@@ -79,6 +79,28 @@ class LogicTest {
         assertEquals(4, c.size());
         assertEquals(4, p.args().length);
         assertEquals("master,challenger", p.args()[2]);
+        assertEquals("p.patch = ANY(string_to_array(?, ','))", c.get(0));
+        assertEquals("15.21", p.args()[0]);
+    }
+
+    @Test
+    void tierListKeepsOnlyMainRoles() {
+        // Olaf: jungle 700, top 150 and support 150 (15% each, under 20%). Ahri: mid 400, top 150, adc 150, support 30.
+        List<Map<String, Object>> rows = List.of(
+                Map.of("champion_id", 2, "role", "jungle", "games", 700),
+                Map.of("champion_id", 2, "role", "top", "games", 150),
+                Map.of("champion_id", 2, "role", "support", "games", 150),
+                Map.of("champion_id", 103, "role", "mid", "games", 400),
+                Map.of("champion_id", 103, "role", "top", "games", 150),
+                Map.of("champion_id", 103, "role", "adc", "games", 150),
+                Map.of("champion_id", 103, "role", "support", "games", 30));
+        List<String> kept = com.lolstats.query.StatsQueries.mainRoles(rows).stream()
+                .map(r -> r.get("champion_id") + ":" + r.get("role")).toList();
+        // Ahri top and adc are both 20.5%; only 2 roles per champion, so one of them is dropped.
+        assertEquals(3, kept.size(), kept.toString());
+        assertTrue(kept.contains("2:jungle"));
+        assertTrue(kept.contains("103:mid"));
+        assertTrue(kept.stream().noneMatch(k -> k.startsWith("2:top") || k.startsWith("2:support")));
     }
 
     @Test
@@ -150,7 +172,7 @@ class LogicTest {
 
         TimelineInfo info = MatchIngestService.parseTimeline(tl, "b");
         assertNotNull(info);
-        assertEquals("QWEQQRQQWWWWEEEE".substring(0, 15), info.skillOrder());
+        assertEquals("QWEQQRQQWWWWEEEE", info.skillOrder()); // 16 skill-ups, all kept (cap is 18)
         assertEquals("Q>W>E", info.skillMaxOrder());
         assertEquals(List.of(1055), info.startingItems()); // undone consumable and late purchase excluded
         assertNull(MatchIngestService.parseTimeline(tl, "unknown"));
