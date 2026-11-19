@@ -102,7 +102,7 @@ public class MatchController {
                     "participants", parts));
         }
 
-        QueueInfo queue = Domain.queueFromId(Db.i(match, "queue_id"));
+        QueueInfo queue = Domain.profileQueueFromId(Db.i(match, "queue_id"));
         return Api.cached(3600, ok(obj(
                 "matchId", match.get("match_id"),
                 "region", match.get("region"),

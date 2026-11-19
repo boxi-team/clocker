@@ -121,7 +121,7 @@ public class MatchIngestService {
 
     /**
      * Downloads one match (and, for a sample, its timeline) and stores it.
-     * Only ranked Solo/Duo and Flex matches that are not remakes are stored.
+     * Only ranked Solo/Duo, Flex and ARAM matches that are not remakes are stored.
      */
     public Outcome ingestMatch(String region, String matchId, String tierBucket, boolean forceTimeline) {
         if (db.exists("SELECT 1 FROM matches WHERE match_id = ?", matchId)) return Outcome.EXISTS;
@@ -147,7 +147,7 @@ public class MatchIngestService {
         JsonNode m = riot.match(region, matchId);
         JsonNode info = m.path("info");
         int queueId = info.path("queueId").asInt();
-        if (Domain.queueFromId(queueId) == null || info.path("gameDuration").asInt() < REMAKE_SECONDS
+        if (Domain.profileQueueFromId(queueId) == null || info.path("gameDuration").asInt() < REMAKE_SECONDS
                 || info.path("participants").size() != 10) {
             return Outcome.SKIPPED;
         }

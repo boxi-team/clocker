@@ -58,6 +58,18 @@ public final class Domain {
             new QueueInfo("ranked_flex", 440, "RANKED_FLEX_SR"));
     public static final List<String> QUEUE_NAMES = QUEUES.stream().map(QueueInfo::name).toList();
 
+    /** Queues imported for a player's own match history. Normals stay out of QUEUES so champion stats stay ranked-only. */
+    public static final List<QueueInfo> PROFILE_QUEUES = List.of(QUEUES.get(0), QUEUES.get(1),
+            new QueueInfo("normal_draft", 400, "NORMAL_DRAFT"),
+            new QueueInfo("normal_blind", 430, "NORMAL_BLIND"),
+            new QueueInfo("swiftplay", 480, "SWIFTPLAY"),
+            new QueueInfo("quickplay", 490, "QUICKPLAY"));
+    public static final List<String> PROFILE_QUEUE_NAMES = PROFILE_QUEUES.stream().map(QueueInfo::name).toList();
+
+    public static QueueInfo profileQueueFromId(int id) {
+        return PROFILE_QUEUES.stream().filter(q -> q.id() == id).findFirst().orElse(null);
+    }
+
     public static QueueInfo queue(String name) {
         return QUEUES.stream().filter(q -> q.name().equals(name)).findFirst().orElseThrow();
     }
