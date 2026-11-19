@@ -352,7 +352,8 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
             {/* Right side: stats + match history */}
             <div className={`${COL} space-y-4`}>
                 {!isOwnProfile && onBackToMyProfile && (
-                    <div className="flex items-center justify-between rounded-2xl border border-accent/25 bg-accent/5 p-3.5 text-xs text-white/80 shadow-[0_0_20px_rgba(94,225,255,0.1)]">
+                    // sticky: stays on screen while the match list scrolls (page scroll below lg, column scroll on lg)
+                    <div className="sticky top-[4.6rem] z-20 flex items-center justify-between rounded-2xl border border-accent/25 bg-ink/85 p-3.5 text-xs text-white/80 shadow-[0_0_20px_rgba(94,225,255,0.1)] backdrop-blur-md lg:top-0">
                         <span className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
                             <span>Viewing searched profile: <strong className="text-white font-semibold">{p.name}#{p.tag}</strong></span>

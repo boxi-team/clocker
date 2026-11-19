@@ -19,7 +19,8 @@ const isTab = (id) => TABS.some(([t]) => t === id);
 const frame = (r, o = {}) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.w}px`, height: `${r.h}px`, borderRadius: `${r.rad ?? RADIUS}px`, opacity: 1, ...o });
 const dot = (r, o = {}) => frame({ left: r.left + r.w / 2 - r.h / 2, top: r.top, w: r.h, h: r.h, rad: r.h / 2 }, o);
 
-export default function Navbar({ page, onNavigate, onSearch }) {
+// viewing: Riot ID of another player whose profile is open (null = own profile)
+export default function Navbar({ page, onNavigate, onSearch, viewing = null }) {
   const [q, setQ] = useState('');
   const navRef = useRef(null);
   const tabRefs = useRef({});
@@ -136,15 +137,17 @@ export default function Navbar({ page, onNavigate, onSearch }) {
               const active = page === id;
               const on = lit === id;
               // If logged in and on profile tab, display summoner name or custom badge
-              const tabLabel = (id === 'profile' && user)
-                  ? (activeSummoner?.rawName || user.displayName || 'Profile')
+              const tabLabel = id !== 'profile' ? label
+                  : viewing ? viewing.split('#')[0]
+                  : user ? (activeSummoner?.rawName || user.displayName || 'Profile')
                   : label;
 
               return (
                   <button key={id} ref={(el) => { tabRefs.current[id] = el; }} onClick={() => onNavigate(id)} aria-current={active ? 'page' : undefined}
                           className={`relative z-10 flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-accent/60 ${on ? 'text-white' : 'text-white/55 hover:bg-white/[0.05] hover:text-white/90'}`}>
                     <Icon size={15} className={on ? 'text-accent' : ''} aria-hidden />
-                    <span>{tabLabel}</span>
+                    {/* key: a new name remounts the span, so it plays the rise animation */}
+                    <span key={tabLabel} className={id === 'profile' ? 'animate-rise' : undefined}>{tabLabel}</span>
                   </button>
               );
             })}

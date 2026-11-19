@@ -129,8 +129,8 @@ export default function MatchCard({ m, i = 0, puuid }) {
                     </div>
                     <Tile label={rune.name} src={rune.img} className="h-8 w-8 !rounded-full text-[9px]" />
                 </div>
-                <div className="w-24 shrink-0 text-center">
-                    <p className="font-display text-lg font-semibold tabular-nums">
+                <div className="w-28 shrink-0 text-center">
+                    <p className="whitespace-nowrap font-display text-lg font-semibold tabular-nums">
                         {m.k} <span className="text-white/30">/</span> <span className="text-loss">{m.d}</span> <span className="text-white/30">/</span> {m.a}
                     </p>
                     <p className="text-xs font-medium text-white/50">{kdaRatio(m.k, m.d, m.a)} KDA</p>

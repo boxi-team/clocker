@@ -33,7 +33,6 @@ export default function App() {
         if (p === 'champions') return navigate('/champions');
         if (p === 'leaders') return navigate('/leaderboard');
         if (p === 'live') return navigate('/live');
-        if (p === 'profile') setSearchedSummoner(null); // Going directly to profile clears search to show own profile
         if (onUrlPage) navigate('/');
         setPage(p);
     };
@@ -56,6 +55,7 @@ export default function App() {
                 page={page === 'champions' || page === 'champion' ? 'tiers' : page}
                 onNavigate={go}
                 onSearch={search}
+                viewing={searchedSummoner && !isOwnProfile ? searchedSummoner.name : null}
             />
 
             {page === 'home' ? (
