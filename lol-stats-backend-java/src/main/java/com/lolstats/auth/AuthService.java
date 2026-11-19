@@ -58,8 +58,24 @@ public class AuthService {
         String riot = trim(riotId);
         if (riot.length() > 30 || reg.length() > 10) throw AppException.invalid("riotId", "Too long");
 
-        if (findByEmail(mail) != null) throw emailTaken();
+        Map<String, Object> existing = findByEmail(mail);
+        if (existing != null && Db.b(existing, "email_verified")) throw emailTaken();
         String code = newCode();
+        if (existing != null) {
+            // Unverified account: whoever proves the inbox sets the password, so nobody can squat someone else's email.
+            long wait = resendWait(existing);
+            if (wait > 0) throw resendTooSoon(wait);
+            tx.executeWithoutResult(status -> {
+                db.update("UPDATE users SET password_hash = ?, display_name = ?, verification_code = ?, "
+                                + "verification_expires_at = ?, verification_attempts = 0, linked_riot_id = ?, "
+                                + "linked_region = ?, updated_at = now() WHERE id = ?",
+                        encoder.encode(password), name, code, Timestamp.from(Instant.now().plus(CODE_TTL)),
+                        riot.isEmpty() ? null : riot, riot.isEmpty() ? null : reg, existing.get("id"));
+                db.update("DELETE FROM auth_sessions WHERE user_id = ?", existing.get("id"));
+                sendCode(mail, code);
+            });
+            return obj("status", "PENDING_VERIFICATION", "email", mail);
+        }
         try {
             // Insert and send together: if the email cannot be sent the account is not created, so the user can retry.
             tx.executeWithoutResult(status -> {
@@ -104,22 +120,9 @@ public class AuthService {
         Map<String, Object> u = findByEmail(normalizeEmail(email));
         if (u == null) throw AppException.notFound(ErrorCode.NOT_FOUND, "No account with this email.");
         if (Db.b(u, "email_verified")) throw AppException.invalidMessage("This email is already verified. Please log in.");
-        Object expires = u.get("verification_expires_at");
-        if (expires != null) {
-            // The previous code was sent CODE_TTL before it expires.
-            Instant sentAt = ((Instant) expires).minus(CODE_TTL);
-            long wait = Duration.between(Instant.now(), sentAt.plus(RESEND_COOLDOWN)).toSeconds();
-            if (wait > 0) {
-                throw new AppException(429, ErrorCode.RATE_LIMITED,
-                        "Please wait " + wait + " seconds before requesting a new code.", null, (int) wait);
-            }
-        }
-        String code = newCode();
-        tx.executeWithoutResult(status -> {
-            db.update("UPDATE users SET verification_code = ?, verification_expires_at = ?, verification_attempts = 0, "
-                    + "updated_at = now() WHERE id = ?", code, Timestamp.from(Instant.now().plus(CODE_TTL)), u.get("id"));
-            sendCode(Db.s(u, "email"), code);
-        });
+        long wait = resendWait(u);
+        if (wait > 0) throw resendTooSoon(wait);
+        issueCode(u);
         return obj("status", "CODE_SENT", "email", Db.s(u, "email"));
     }
 
@@ -131,14 +134,28 @@ public class AuthService {
             throw new AppException(401, ErrorCode.INVALID_CREDENTIALS, "Invalid email or password.");
         }
         if (!Db.b(u, "email_verified")) {
+            // The login page tells the user a fresh code is on its way; a mail failure still leaves the resend button.
+            if (resendWait(u) <= 0) {
+                try {
+                    issueCode(u);
+                } catch (AppException ignored) {
+                    // logged by Mailer
+                }
+            }
             throw new AppException(403, ErrorCode.EMAIL_NOT_VERIFIED, "Please verify your email first.");
         }
         return session(u);
     }
 
+    /** Ends the session of a "Bearer token" header. Unknown or missing tokens are ignored. */
+    public void logout(String authorization) {
+        String token = bearer(authorization);
+        if (!token.isEmpty()) db.update("DELETE FROM auth_sessions WHERE token_hash = ?", sha256(token));
+    }
+
     /** The user behind a "Bearer token" header, or 401. */
     public Map<String, Object> me(String authorization) {
-        String token = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "";
+        String token = bearer(authorization);
         Map<String, Object> u = token.isEmpty() ? null : db.one(
                 "SELECT u.* FROM auth_sessions s JOIN users u ON u.id = s.user_id "
                         + "WHERE s.token_hash = ? AND s.expires_at > now()", sha256(token));
@@ -152,7 +169,30 @@ public class AuthService {
         return db.one("SELECT * FROM users WHERE lower(email) = ? AND auth_provider = 'email'", email);
     }
 
+    /** Seconds until a new code may be sent; 0 or less means now. The previous code was sent CODE_TTL before it expires. */
+    private static long resendWait(Map<String, Object> u) {
+        Object expires = u.get("verification_expires_at");
+        if (expires == null) return 0;
+        Instant sentAt = ((Instant) expires).minus(CODE_TTL);
+        return Duration.between(Instant.now(), sentAt.plus(RESEND_COOLDOWN)).toSeconds();
+    }
+
+    private static AppException resendTooSoon(long wait) {
+        return new AppException(429, ErrorCode.RATE_LIMITED,
+                "Please wait " + wait + " seconds before requesting a new code.", null, (int) wait);
+    }
+
+    private void issueCode(Map<String, Object> u) {
+        String code = newCode();
+        tx.executeWithoutResult(status -> {
+            db.update("UPDATE users SET verification_code = ?, verification_expires_at = ?, verification_attempts = 0, "
+                    + "updated_at = now() WHERE id = ?", code, Timestamp.from(Instant.now().plus(CODE_TTL)), u.get("id"));
+            sendCode(Db.s(u, "email"), code);
+        });
+    }
+
     private Map<String, Object> session(Map<String, Object> u) {
+        db.update("DELETE FROM auth_sessions WHERE expires_at <= now()"); // tiny table, so cleaning on login is enough
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -211,6 +251,10 @@ public class AuthService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    static String bearer(String authorization) {
+        return authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7).trim() : "";
     }
 
     private static String trim(String s) {

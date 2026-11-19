@@ -52,6 +52,13 @@ public class AuthController {
         return ok(auth.login(str(body, "email"), str(body, "password")));
     }
 
+    /** Header "Authorization: Bearer {token}". Ends that session. */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        auth.logout(authorization);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Header "Authorization: Bearer {token}". Answers {data: user}. */
     @GetMapping("/me")
     public Map<String, Object> me(@RequestHeader(value = "Authorization", required = false) String authorization) {

@@ -124,6 +124,9 @@ The frontend talks to `http://localhost:3000` by default. To use another backend
 | `LOW_SAMPLE_GAMES` | `100` | Rows with fewer games are flagged `lowSample` |
 | `INBOUND_RATE_LIMIT` | `120` | Requests per minute per IP |
 | `RIOT_BASE_URL` | empty | Tests only: redirects Riot requests |
+| `MAIL_HOST` / `MAIL_PORT` | empty / `587` | SMTP server for email verification codes. Without `MAIL_HOST` the code is only written to the backend log. Port `465` uses SSL, any other port STARTTLS |
+| `MAIL_USER` / `MAIL_PASSWORD` | empty | SMTP login (for Gmail, an app password). Keep them in `.env`, never in a commit |
+| `MAIL_FROM` | `MAIL_USER` | Sender address of the verification emails |
 
 Frontend: `VITE_API_URL` (default `http://localhost:3000`).
 
@@ -144,6 +147,8 @@ All routes are under `/v1`. The full spec is in `openapi.yaml`.
 | POST | `/players/{region}/{gameName}/{tagLine}/refresh` |
 | GET | `/matches/{region}/{matchId}`, `/jobs/{jobId}` |
 | POST | `/admin/sync`, `/admin/crawl` (require `x-admin-token`) |
+| POST | `/auth/register`, `/auth/verify-email`, `/auth/resend-code`, `/auth/login`, `/auth/logout` |
+| GET | `/auth/me` (`Authorization: Bearer <token>`) |
 
 Conventions:
 - Success: `{ "data": ..., "meta": {...} }`. Error: `{ "error": { "code", "message", "details?" } }`.

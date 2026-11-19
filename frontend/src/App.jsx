@@ -5,6 +5,7 @@ import Stage from './components/Stage';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
 import Auth from './pages/Auth';
+import LinkRiot from './pages/LinkRiot';
 import Champions from './pages/Champions';
 import ChampionDetail from './pages/ChampionDetail';
 import Leaderboard from './pages/Leaderboard';
@@ -74,6 +75,8 @@ export default function App() {
                                     isOwnProfile={isOwnProfile}
                                     onBackToMyProfile={activeSummoner ? () => setSearchedSummoner(null) : undefined}
                                 />
+                            ) : user ? (
+                                <LinkRiot />
                             ) : (
                                 <Auth
                                     onLoginSuccess={(s) => {
