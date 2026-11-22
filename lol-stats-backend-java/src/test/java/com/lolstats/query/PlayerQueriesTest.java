@@ -22,9 +22,9 @@ class PlayerQueriesTest {
 
     @Test
     void playerFilterRecordWithoutModifiers() {
-        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("puuid-1", 420, "14.23", 103, "mid");
+        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("puuid-1", List.of(420), "14.23", 103, "mid");
         assertEquals("puuid-1", filter.puuid());
-        assertEquals(420, filter.queueId());
+        assertEquals(List.of(420), filter.queueIds());
         assertEquals("14.23", filter.patch());
         assertEquals(103, filter.championKey());
         assertEquals("mid", filter.role());
@@ -48,7 +48,7 @@ class PlayerQueriesTest {
 
     @Test
     void listMatchesReturnsTotalAndRows() {
-        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("p1", 420, null, null, null);
+        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("p1", List.of(420), null, null, null);
 
         when(db.one(contains("SELECT count(*)::int AS n FROM match_participants p WHERE"), any(), any()))
                 .thenReturn(Map.of("n", 25));
@@ -66,7 +66,7 @@ class PlayerQueriesTest {
 
     @Test
     void playerStatsAggregatesSummaryAndLast20() {
-        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("p1", 420, null, null, null);
+        PlayerQueries.PlayerFilter filter = new PlayerQueries.PlayerFilter("p1", List.of(420), null, null, null);
 
         Map<String, Object> summaryRow = Api.obj(
                 "games", 10, "wins", 6, "k", 50.0, "d", 20.0, "a", 60.0,
