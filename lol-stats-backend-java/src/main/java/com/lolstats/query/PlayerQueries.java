@@ -16,9 +16,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class PlayerQueries {
     /** {@code patch}, {@code championKey} and {@code role} are optional (null = no restriction). */
-    public record PlayerFilter(String puuid, int queueId, String patch, Integer championKey, String role) {
+    public record PlayerFilter(String puuid, List<Integer> queueIds, String patch, Integer championKey, String role) {
         PlayerFilter without(boolean champion, boolean roleToo) {
-            return new PlayerFilter(puuid, queueId, patch, champion ? null : championKey, roleToo ? null : role);
+            return new PlayerFilter(puuid, queueIds, patch, champion ? null : championKey, roleToo ? null : role);
         }
     }
 
@@ -36,7 +36,7 @@ public class PlayerQueries {
     private static String where(PlayerFilter f, P p) {
         List<String> c = new ArrayList<>();
         c.add("p.puuid = " + p.add(f.puuid()));
-        c.add("p.queue_id = " + p.add(f.queueId()));
+        if (f.queueIds() != null) c.add("p.queue_id = ANY(" + p.add(Db.intArray(f.queueIds())) + "::int[])"); // null = every stored queue
         if (f.patch() != null) c.add("p.patch = " + p.add(f.patch()));
         if (f.championKey() != null) c.add("p.champion_id = " + p.add(f.championKey()));
         if (f.role() != null) c.add("p.role = " + p.add(f.role()));

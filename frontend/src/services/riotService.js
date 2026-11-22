@@ -210,6 +210,16 @@ export async function refreshPlayer(puuid) {
     return { ok: true };
 }
 
+// "Load more": the backend imports up to 20 older matches from Riot. Returns how many were stored (0 = nothing older).
+export async function loadOlderMatches(puuid, queue = 'all') {
+    const path = who.get(puuid);
+    if (!path) return 0;
+    const res = await fetch(`${API}/v1${path}/matches/older?queue=${queue}`, { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error?.message ?? 'Could not load older matches');
+    return body.data.stored;
+}
+
 // Aggregate stats of the player (solo queue): { summary, byRole[], last20 }
 export async function getPlayerStats(puuid) {
     const path = who.get(puuid);
@@ -218,14 +228,21 @@ export async function getPlayerStats(puuid) {
     return data;
 }
 
-export async function getMatchHistory(puuid) {
+const MODE_LABEL = {
+    ranked_solo: 'Ranked Solo', ranked_flex: 'Ranked Flex', normal_draft: 'Normal Draft',
+    normal_blind: 'Normal Blind', swiftplay: 'Swiftplay', quickplay: 'Quickplay',
+};
+
+// queue: 'all' (ranked + normals) | 'ranked_solo' | 'ranked_flex'. Latest `count` stored matches of that queue.
+export async function getMatchHistory(puuid, queue = 'all', count = 20) {
     if (!puuid || !who.has(puuid)) return [];
-    const [{ data }, A] = await Promise.all([api(`${who.get(puuid)}/matches?count=20`), loadAssets()]);
+    const [{ data }, A] = await Promise.all([api(`${who.get(puuid)}/matches?count=${count}&queue=${queue}`), loadAssets()]);
     const item = (id) => (id ? A.itemMap[id] ?? { name: String(id) } : null);
     return data.map((m) => ({
         id: m.matchId,
         win: m.win,
-        mode: m.queue === 'ranked_solo' ? 'Ranked Solo' : 'Ranked Flex',
+        mode: MODE_LABEL[m.queue] ?? m.queue,
+        queue: m.queue,
         role: m.role,
         ago: timeAgo(m.gameCreation),
         mins: Math.round(m.gameDuration / 60),

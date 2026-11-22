@@ -31,6 +31,9 @@ public class PlayerService {
     private static final Logger log = LoggerFactory.getLogger(PlayerService.class);
     /** Matches downloaded and stored at the same time for one player import (database pool has 10 connections). */
     private static final int IMPORT_PARALLELISM = 3;
+    /** Load more pages through at most OLDER_MAX_PAGES * OLDER_PAGE ids of each queue. */
+    private static final int OLDER_PAGE = 100;
+    private static final int OLDER_MAX_PAGES = 3;
     public record ImportResult(int stored, int skipped, int existing) {}
 
     private final Db db;
@@ -100,30 +103,84 @@ public class PlayerService {
         return r == null ? "unranked" : Db.s(r, "tier").toLowerCase();
     }
 
+    private record ToFetch(String id, String queue) {}
+
     /**
-     * Imports new ranked matches for a player (both queues). First time: the latest
-     * {@code firstImportCount} per queue. Afterwards: everything since the newest stored match, up to 100.
+     * Imports new matches for a player (every queue in {@link Domain#PROFILE_QUEUES}). First time: the latest
+     * {@code firstImportCount} per queue. Afterwards: everything since the newest stored match of that queue, up to 100.
      */
     public ImportResult importPlayerMatches(String puuid, Progress onProgress) {
-        PlayerRow player = getPlayerByPuuid(puuid);
-        if (player == null) throw new AppException(404, ErrorCode.PLAYER_NOT_FOUND, "Unknown player");
-
-        Long lastCreation = player.lastMatchCreation();
-        record ToFetch(String id, String queue) {}
+        PlayerRow player = requirePlayer(puuid);
         List<ToFetch> toFetch = new ArrayList<>();
-        for (QueueInfo queue : Domain.QUEUES) {
+        for (QueueInfo queue : Domain.PROFILE_QUEUES) {
+            // Per queue, so a queue added later still gets its first import for players already stored.
+            Long lastCreation = storedCreation(puuid, queue.id());
             JsonNode ids = riot.matchIds(player.region(), puuid, queue.id(),
                     lastCreation != null ? 100 : props.firstImportCount(),
                     lastCreation != null ? lastCreation / 1000 : null);
             for (JsonNode id : ids) toFetch.add(new ToFetch(id.asText(), queue.name()));
         }
+        ImportResult r = ingest(player, toFetch, onProgress);
+        db.update("UPDATE players SET last_refreshed_at = now(), "
+                + "last_match_creation = COALESCE((SELECT max(game_creation) FROM match_participants WHERE puuid = ?), last_match_creation) "
+                + "WHERE puuid = ?", puuid, puuid);
+        return r;
+    }
 
+    /**
+     * "Load more": imports the {@code count} newest matches of {@code queues} that are not stored yet. It pages through
+     * Riot's history (newest first) instead of starting below the oldest stored match, because matches stored from other
+     * players' games leave gaps in a player's own history.
+     */
+    public ImportResult importOlderMatches(String puuid, List<QueueInfo> queues, int count) {
+        PlayerRow player = requirePlayer(puuid);
+        List<ToFetch> missing = new ArrayList<>();
+        for (QueueInfo queue : queues) {
+            int found = 0;
+            for (int page = 0; page < OLDER_MAX_PAGES && found < count; page++) {
+                List<String> ids = new ArrayList<>();
+                riot.matchIds(player.region(), puuid, queue.id(), page * OLDER_PAGE, OLDER_PAGE, null)
+                        .forEach(id -> ids.add(id.asText()));
+                Set<String> known = matches.existingMatchIds(ids);
+                for (String id : ids) {
+                    if (found < count && !known.contains(id)) {
+                        missing.add(new ToFetch(id, queue.name()));
+                        found++;
+                    }
+                }
+                if (ids.size() < OLDER_PAGE) break; // end of the history
+            }
+        }
+        // Match ids of one region grow with time: the highest are the newest of the missing ones.
+        missing.sort((a, b) -> Long.compare(idNumber(b.id()), idNumber(a.id())));
+        return ingest(player, missing.subList(0, Math.min(count, missing.size())), null);
+    }
+
+    private PlayerRow requirePlayer(String puuid) {
+        PlayerRow player = getPlayerByPuuid(puuid);
+        if (player == null) throw new AppException(404, ErrorCode.PLAYER_NOT_FOUND, "Unknown player");
+        return player;
+    }
+
+    /** Newest game_creation of the player's stored matches in one queue; null when none. */
+    private Long storedCreation(String puuid, int queueId) {
+        Object t = db.one("SELECT max(game_creation) AS t FROM match_participants WHERE puuid = ? AND queue_id = ?",
+                puuid, queueId).get("t");
+        return t == null ? null : ((Number) t).longValue();
+    }
+
+    static long idNumber(String matchId) {
+        return Long.parseLong(matchId.substring(matchId.indexOf('_') + 1));
+    }
+
+    private ImportResult ingest(PlayerRow player, List<ToFetch> toFetch, Progress onProgress) {
+        String puuid = player.puuid();
         long t0 = System.nanoTime();
         // One query tells us which matches we already have; only the new ones are downloaded.
         Set<String> known = matches.existingMatchIds(toFetch.stream().map(ToFetch::id).toList());
         List<ToFetch> fresh = toFetch.stream().filter(f -> !known.contains(f.id())).toList();
         Map<String, String> tierByQueue = new HashMap<>();
-        for (QueueInfo queue : Domain.QUEUES) tierByQueue.put(queue.name(), tierBucketFor(puuid, queue.name()));
+        for (QueueInfo queue : Domain.PROFILE_QUEUES) tierByQueue.put(queue.name(), tierBucketFor(puuid, queue.name()));
 
         AtomicInteger stored = new AtomicInteger();
         AtomicInteger skipped = new AtomicInteger();
@@ -166,10 +223,6 @@ public class PlayerService {
         log.info("[import] {}: {} listed, {} already stored, {} new ({} stored, {} skipped) in {} ms",
                 puuid.substring(0, 8), toFetch.size(), known.size(), fresh.size(), stored.get(), skipped.get(),
                 (System.nanoTime() - t0) / 1_000_000);
-
-        db.update("UPDATE players SET last_refreshed_at = now(), "
-                + "last_match_creation = COALESCE((SELECT max(game_creation) FROM match_participants WHERE puuid = ?), last_match_creation) "
-                + "WHERE puuid = ?", puuid, puuid);
         return new ImportResult(stored.get(), skipped.get(), existing.get());
     }
 }

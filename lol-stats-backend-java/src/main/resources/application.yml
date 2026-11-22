@@ -60,3 +60,11 @@ lol:
   leaderboard-regions: ${LEADERBOARD_REGIONS:euw1,eun1,na1,kr,br1,la1,oc1,tr1}
   leaderboard-size: ${LEADERBOARD_SIZE:100}
   leaderboard-cron: ${LEADERBOARD_CRON:0 0 0 * * *}
+  # SMTP for the email verification codes. Put the real values in .env, never in a commit.
+  # Without MAIL_HOST the code is only written to the log (local development).
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    user: ${MAIL_USER:}
+    password: ${MAIL_PASSWORD:}
+    from: ${MAIL_FROM:}

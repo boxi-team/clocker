@@ -7,7 +7,7 @@ import RegionSelect from '../components/RegionSelect';
 import { Label, ErrorState, pct, num, wrColor } from '../components/champion/common';
 import { useRequest } from '../hooks/useRequest';
 import { useAuth } from '../hooks/useAuth';
-import { getSummoner, getMatchHistory, getMatchesStatus, refreshPlayer } from '../services/riotService';
+import { getSummoner, getMatchHistory, getMatchesStatus, refreshPlayer, loadOlderMatches } from '../services/riotService';
 import { ROLE_LABEL, SEARCH_REGIONS } from '../lib/constants';
 
 const REGION_LIST = Object.keys(SEARCH_REGIONS);
@@ -204,6 +204,7 @@ const SkeletonRows = ({ n }) => Array.from({ length: n }, (_, i) => (
     </Glass>
 ));
 
+const PAGE = 20; // matches per Load more
 const GRID = 'mx-auto grid max-w-7xl items-start gap-6 px-4 lg:grid-cols-[320px_minmax(0,1fr)]';
 const PAD = 'min-w-0 pt-6 pb-6 lg:h-[calc(100dvh-4.1rem)]';
 const COL = `${PAD} lg:overflow-y-auto lg:overscroll-contain no-scrollbar`;
@@ -217,7 +218,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
     const [polling, setPolling] = useState(0);
     const [partial, setPartial] = useState(0);
 
-    // Filter queue state: 'all' | 'solo' | 'flex'
+    // Filter queue state: 'all' (ranked + normals) | 'ranked_solo' | 'ranked_flex' (sent to the backend)
     const [queueFilter, setQueueFilter] = useState('all');
 
     // Link modal state
@@ -251,7 +252,30 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
         return () => { alive = false; clearTimeout(timer); };
     }, [p?.puuid, polling]);
 
-    const matches = useRequest(() => (p?.puuid ? getMatchHistory(p.puuid).catch(() => []) : []), [p?.puuid, version, partial]);
+    // Load more: show `limit` matches; when the database runs out, the backend imports older ones from Riot.
+    const [limit, setLimit] = useState(PAGE);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [noMore, setNoMore] = useState(false);
+    const [moreError, setMoreError] = useState('');
+    const pickQueue = (q) => { setQueueFilter(q); setLimit(PAGE); setNoMore(false); setMoreError(''); };
+
+    const matches = useRequest(() => (p?.puuid ? getMatchHistory(p.puuid, queueFilter, limit).catch(() => []) : []), [p?.puuid, version, partial, queueFilter, limit]);
+
+    const onLoadMore = async () => {
+        const want = limit + PAGE;
+        setLoadingMore(true);
+        setMoreError('');
+        try {
+            // Always import first: stored matches can have gaps (games saved from other players' matches).
+            const added = await loadOlderMatches(p.puuid, queueFilter);
+            if (added === 0 && (await getMatchHistory(p.puuid, queueFilter, want)).length <= list.length) setNoMore(true);
+            setLimit(want);
+        } catch (e) {
+            setMoreError(e.message);
+        } finally {
+            setLoadingMore(false);
+        }
+    };
 
     const onRefresh = async () => {
         setNote('');
@@ -308,10 +332,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
         );
     }
 
-    const rawList = matches.data ?? [];
-    const list = queueFilter === 'all'
-        ? rawList
-        : rawList.filter((m) => queueFilter === 'solo' ? m.mode.includes('Solo') : m.mode.includes('Flex'));
+    const list = matches.data ?? [];
 
     const importing = status === 'pending';
 
@@ -331,7 +352,8 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
             {/* Right side: stats + match history */}
             <div className={`${COL} space-y-4`}>
                 {!isOwnProfile && onBackToMyProfile && (
-                    <div className="flex items-center justify-between rounded-2xl border border-accent/25 bg-accent/5 p-3.5 text-xs text-white/80 shadow-[0_0_20px_rgba(94,225,255,0.1)]">
+                    // sticky: stays on screen while the match list scrolls (page scroll below lg, column scroll on lg)
+                    <div className="sticky top-[4.6rem] z-20 flex items-center justify-between rounded-2xl border border-accent/25 bg-ink/85 p-3.5 text-xs text-white/80 shadow-[0_0_20px_rgba(94,225,255,0.1)] backdrop-blur-md lg:top-0">
                         <span className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
                             <span>Viewing searched profile: <strong className="text-white font-semibold">{p.name}#{p.tag}</strong></span>
@@ -345,7 +367,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                     </div>
                 )}
 
-                <Performance matches={rawList} />
+                <Performance matches={list} />
 
                 {/* Match history header with Filters */}
                 <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-1">
@@ -360,7 +382,7 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                         {/* Queue Filters */}
                         <div className="flex rounded-xl border border-white/10 bg-white/[0.04] p-1 text-xs">
                             <button
-                                onClick={() => setQueueFilter('all')}
+                                onClick={() => pickQueue('all')}
                                 className={`rounded-lg px-2.5 py-1 font-medium transition ${
                                     queueFilter === 'all' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
                                 }`}
@@ -368,17 +390,17 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                                 All
                             </button>
                             <button
-                                onClick={() => setQueueFilter('solo')}
+                                onClick={() => pickQueue('ranked_solo')}
                                 className={`rounded-lg px-2.5 py-1 font-medium transition ${
-                                    queueFilter === 'solo' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
+                                    queueFilter === 'ranked_solo' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
                                 }`}
                             >
                                 Solo/Duo
                             </button>
                             <button
-                                onClick={() => setQueueFilter('flex')}
+                                onClick={() => pickQueue('ranked_flex')}
                                 className={`rounded-lg px-2.5 py-1 font-medium transition ${
-                                    queueFilter === 'flex' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
+                                    queueFilter === 'ranked_flex' ? 'bg-accent text-ink font-bold shadow' : 'text-white/60 hover:text-white'
                                 }`}
                             >
                                 Flex
@@ -400,13 +422,25 @@ export default function Profile({ summoner, isOwnProfile = false, onBackToMyProf
                 {list.length === 0 && (matches.loading || importing) && <SkeletonRows n={5} />}
                 {list.length === 0 && !matches.loading && !importing && (
                     <Glass className="p-8 text-center text-white/60">
-                        No ranked matches found for the selected filter.
+                        No matches found for the selected filter.
                     </Glass>
                 )}
 
                 {list.map((m, i) => (
                     <MatchCard key={m.id} m={m} i={i} puuid={p.puuid} />
                 ))}
+
+                {list.length > 0 && !noMore && (
+                    <button
+                        type="button"
+                        onClick={onLoadMore}
+                        disabled={loadingMore || matches.loading}
+                        className="w-full rounded-xl border border-white/10 bg-white/[0.04] py-2.5 text-xs font-semibold text-white/80 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+                    >
+                        {loadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                )}
+                {moreError && <p className="text-center text-xs text-loss">{moreError}</p>}
             </div>
 
             {/* Modal Change Riot ID */}

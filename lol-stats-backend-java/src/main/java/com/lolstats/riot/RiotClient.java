@@ -159,10 +159,16 @@ public class RiotClient {
         return get(region, "/lol/league/v4/entries/by-puuid/" + enc(puuid));
     }
 
-    /** Array of match ids. {@code startTime} (epoch seconds) may be null. */
+    /** Array of match ids, newest first. {@code startTime} (epoch seconds) may be null. */
     public JsonNode matchIds(String region, String puuid, int queue, int count, Long startTime) {
+        return matchIds(region, puuid, queue, 0, count, startTime);
+    }
+
+    /** Like above, skipping the {@code start} newest ids (paging through the history). */
+    public JsonNode matchIds(String region, String puuid, int queue, int start, int count, Long startTime) {
         Map<String, Object> q = new LinkedHashMap<>();
         q.put("queue", queue);
+        q.put("start", start);
         q.put("count", count);
         q.put("startTime", startTime);
         return get(Domain.ROUTING.get(region), "/lol/match/v5/matches/by-puuid/" + enc(puuid) + "/ids", q);

@@ -3,6 +3,7 @@ const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 // Authentication & Account Linking Service for boxi.gg
 const STORAGE_KEY = 'boxi_auth_user';
 const ACTIVE_SUMMONER_KEY = 'boxi_active_summoner';
+const TOKEN_KEY = 'boxi_token';
 
 const parseRiotId = (raw, defaultRegion = 'EUW') => {
     if (!raw) return { name: '', tag: defaultRegion };
@@ -151,7 +152,7 @@ export const authService = {
 
         const user = body.data?.user || body.data;
         if (body.data?.token) {
-            localStorage.setItem('boxi_token', body.data.token);
+            localStorage.setItem(TOKEN_KEY, body.data.token);
         }
         this.saveUser(user);
         return { status: 'SUCCESS', user };
@@ -211,7 +212,7 @@ export const authService = {
 
         const user = body.data?.user || body.data;
         if (body.data?.token) {
-            localStorage.setItem('boxi_token', body.data.token);
+            localStorage.setItem(TOKEN_KEY, body.data.token);
         }
         this.saveUser(user);
         return user;
@@ -276,7 +277,24 @@ export const authService = {
         return null;
     },
 
+    // Drops a stored email login whose backend session expired or was revoked. Network errors keep the user.
+    async checkSession() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        if (!token) return;
+        try {
+            const res = await fetch(`${API}/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.status === 401) this.logout();
+        } catch {
+            // backend offline: keep the local user
+        }
+    },
+
     logout() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        if (token) {
+            fetch(`${API}/v1/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+        }
+        localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(ACTIVE_SUMMONER_KEY);
         window.dispatchEvent(new CustomEvent('boxi_auth_change', { detail: null }));

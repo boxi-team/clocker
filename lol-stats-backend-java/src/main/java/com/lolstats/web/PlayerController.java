@@ -160,20 +160,41 @@ public class PlayerController {
         return ResponseEntity.accepted().body(obj("data", startRefresh(player, false).toApi()));
     }
 
+    /** ?queue= one of Domain.PROFILE_QUEUE_NAMES, or "all" (every profile queue). Default ranked_solo. */
+    private static List<Domain.QueueInfo> profileQueues(Q q) {
+        List<String> names = new ArrayList<>(Domain.PROFILE_QUEUE_NAMES);
+        names.add("all");
+        String queue = q.oneOf("queue", names, "ranked_solo");
+        return queue.equals("all") ? Domain.PROFILE_QUEUES
+                : Domain.PROFILE_QUEUES.stream().filter(x -> x.name().equals(queue)).toList();
+    }
+
+    // ---- "Load more": import older matches from Riot (synchronous, at most `count`) ----
+    @PostMapping("/matches/older")
+    public Object olderMatches(@PathVariable String region, @PathVariable String gameName, @PathVariable String tagLine,
+                               @RequestParam Map<String, String> query) {
+        PlayerRow player = requirePlayer(who(region, gameName, tagLine));
+        Q q = new Q(query);
+        List<Domain.QueueInfo> queues = profileQueues(q);
+        int count = q.integer("count", 1, 20, 20);
+        PlayerService.ImportResult r = players.importOlderMatches(player.puuid(), queues, count);
+        return ok(obj("stored", r.stored(), "skipped", r.skipped(), "existing", r.existing()));
+    }
+
     // ---- match list ----
     @GetMapping("/matches")
     public Object matches(@PathVariable String region, @PathVariable String gameName, @PathVariable String tagLine,
                           @RequestParam Map<String, String> query) {
         PlayerRow player = requirePlayer(who(region, gameName, tagLine));
         Q q = new Q(query);
-        String queue = q.oneOf("queue", Domain.QUEUE_NAMES, "ranked_solo");
+        List<Domain.QueueInfo> queues = profileQueues(q);
         String championId = q.str("championId", Integer.MAX_VALUE, null);
         String role = q.oneOf("role", Domain.ROLES, null);
         int start = q.integer("start", 0, Integer.MAX_VALUE, 0);
-        int count = q.integer("count", 1, 100, 20);
+        int count = q.integer("count", 1, 200, 20); // Load more asks for the whole list again, so allow a longer one
 
         ChampionRef champ = championId == null ? null : catalog.resolveChampion(championId);
-        PlayerFilter filter = new PlayerFilter(player.puuid(), Domain.queue(queue).id(), null,
+        PlayerFilter filter = new PlayerFilter(player.puuid(), queues.stream().map(Domain.QueueInfo::id).toList(), null,
                 champ == null ? null : champ.key(), role);
         MatchPage page = queries.listMatches(filter, start, count, catalog.latestPatch());
 
@@ -182,7 +203,7 @@ public class PlayerController {
             int duration = Db.i(r, "game_duration");
             data.add(obj(
                     "matchId", r.get("match_id"),
-                    "queue", queue,
+                    "queue", Domain.profileQueueFromId(Db.i(r, "queue_id")).name(),
                     "patch", r.get("patch"),
                     "gameCreation", Db.l(r, "game_creation"),
                     "gameDuration", duration,
@@ -212,7 +233,7 @@ public class PlayerController {
         Q q = new Q(query);
         String queue = q.oneOf("queue", Domain.QUEUE_NAMES, "ranked_solo");
         String patch = q.regex("patch", PATCH_RE, null);
-        return ok(queries.playerStats(new PlayerFilter(player.puuid(), Domain.queue(queue).id(), patch, null, null)),
+        return ok(queries.playerStats(new PlayerFilter(player.puuid(), List.of(Domain.queue(queue).id()), patch, null, null)),
                 obj("patch", patch));
     }
 
@@ -229,7 +250,7 @@ public class PlayerController {
         int limit = q.integer("limit", 1, 200, 50);
 
         List<Map<String, Object>> rows = queries.playerChampions(
-                new PlayerFilter(player.puuid(), Domain.queue(queue).id(), patch, null, role), sort, limit);
+                new PlayerFilter(player.puuid(), List.of(Domain.queue(queue).id()), patch, null, role), sort, limit);
         ChampionIndex index = catalog.championIndex();
         List<Object> data = new ArrayList<>();
         for (Map<String, Object> r : rows) {
@@ -253,7 +274,7 @@ public class PlayerController {
         ChampionRef champ = catalog.resolveChampion(idOrKey);
         Map<String, Object> data = obj("championKey", champ.key(), "championId", champ.id());
         data.putAll(queries.playerChampionDetail(
-                new PlayerFilter(player.puuid(), Domain.queue(queue).id(), patch, champ.key(), null)));
+                new PlayerFilter(player.puuid(), List.of(Domain.queue(queue).id()), patch, champ.key(), null)));
         return ok(data, obj("patch", patch));
     }
 }

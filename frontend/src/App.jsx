@@ -5,6 +5,7 @@ import Stage from './components/Stage';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
 import Auth from './pages/Auth';
+import LinkRiot from './pages/LinkRiot';
 import Champions from './pages/Champions';
 import ChampionDetail from './pages/ChampionDetail';
 import Leaderboard from './pages/Leaderboard';
@@ -32,7 +33,6 @@ export default function App() {
         if (p === 'champions') return navigate('/champions');
         if (p === 'leaders') return navigate('/leaderboard');
         if (p === 'live') return navigate('/live');
-        if (p === 'profile') setSearchedSummoner(null); // Going directly to profile clears search to show own profile
         if (onUrlPage) navigate('/');
         setPage(p);
     };
@@ -55,6 +55,7 @@ export default function App() {
                 page={page === 'champions' || page === 'champion' ? 'tiers' : page}
                 onNavigate={go}
                 onSearch={search}
+                viewing={searchedSummoner && !isOwnProfile ? searchedSummoner.name : null}
             />
 
             {page === 'home' ? (
@@ -74,6 +75,8 @@ export default function App() {
                                     isOwnProfile={isOwnProfile}
                                     onBackToMyProfile={activeSummoner ? () => setSearchedSummoner(null) : undefined}
                                 />
+                            ) : user ? (
+                                <LinkRiot />
                             ) : (
                                 <Auth
                                     onLoginSuccess={(s) => {
